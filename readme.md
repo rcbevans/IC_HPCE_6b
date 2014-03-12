@@ -23,9 +23,12 @@ modified, but it will be able to take part in all
 other remaining rounds. The cutoff dates for the rounds
 are:
 
- - Thursday 20th, 23:59. Coin weighting 1.
- - Friday 21st, 23:59. Coin weighting 2.
- - Sunday 23rd, 23:59. Coin weighting 3.
+ - Friday 21st, 23:59. Coin weighting 1.
+ - Saturday 22st, 23:59. Coin weighting 2.
+ - Monday 24th, 23:59. Coin weighting 3.
+ 
+The final round is also the hard coursework submission deadline - after
+this point the marks drop to zero.
  
 The coursework will be assesed according to three
 criterias:
