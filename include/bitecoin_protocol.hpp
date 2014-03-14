@@ -53,7 +53,7 @@ namespace bitecoin{
 		struct timeval nn;
 		if(gettimeofday(&nn, NULL))
 			throw std::runtime_error("bitecoin::now() - Couldn't read time."); 
-		return nn.tv_sec*1000000ULL+nn.tv_usec;
+		return (nn.tv_sec*1000000ULL+nn.tv_usec)*1000;
 	}
 #else
 	timestamp_t now()
