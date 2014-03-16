@@ -10,6 +10,33 @@
 /*! Simply library for maintaining large positive integers as an array
 	of 32-bit limbs */
 
+void wide_x_init(uint32_t *x, const uint32_t index, const uint64_t roundId, const uint64_t roundSalt, const uint64_t chainHash)
+{
+	x[0] = index;
+	x[1] = 0;
+
+	uint64_t acc=(roundId&0xFFFFFFFFULL);
+	x[2]=uint32_t(acc&0xFFFFFFFFULL);
+	uint64_t carry=acc>>32;
+	
+	acc=(roundId&0xFFFFFFFFULL)+carry;
+	x[3]=uint32_t(acc&0xFFFFFFFFULL);
+
+	acc=(roundSalt&0xFFFFFFFFULL);
+	x[4]=uint32_t(acc&0xFFFFFFFFULL);
+	carry=acc>>32;
+	
+	acc=(roundSalt&0xFFFFFFFFULL)+carry;
+	x[5]=uint32_t(acc&0xFFFFFFFFULL);
+
+	acc=(chainHash&0xFFFFFFFFULL);
+	x[6]=uint32_t(acc&0xFFFFFFFFULL);
+	carry=acc>>32;
+	
+	acc=(chainHash&0xFFFFFFFFULL)+carry;
+	x[7]=uint32_t(acc&0xFFFFFFFFULL);
+}
+
 /*! Compare two integers as numbers:
 		a<b :  -1
 		a==b :  0

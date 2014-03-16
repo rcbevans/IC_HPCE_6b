@@ -1,6 +1,9 @@
 #ifndef  bitecoin_endpoint_client_hpp
 #define  bitecoin_endpoint_client_hpp
 
+// Provies a basic (non-cryptographic) hash function
+#include "contrib/fnv.hpp"
+
 #include <cstdio>
 #include <cstdarg>
 #include <cstdint>
@@ -68,6 +71,12 @@ public:
 		std::vector<uint32_t> bestSolution(roundInfo->maxIndices);
 		bigint_t bestProof;
 		wide_ones(BIGINT_WORDS, bestProof.limbs);
+
+		// Incorporate the existing block chain data - in a real system this is the
+        // list of transactions we are signing. This is the FNV hash:
+        // http://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
+        hash::fnv<64> hasher;
+        uint64_t chainHash=hasher((const char*)&roundInfo->chainData[0], roundInfo->chainData.size());
 		
 		unsigned nTrials=0;
 		while(1){
@@ -81,7 +90,7 @@ public:
 				indices[j]=curr;
 			}
 			
-			bigint_t proof=HashReference(roundInfo.get(), indices.size(), &indices[0]);
+			bigint_t proof=HashReference(roundInfo.get(), indices.size(), &indices[0], chainHash);
 			double score=wide_as_double(BIGINT_WORDS, proof.limbs);
 			Log(Log_Debug, "    Score=%lg", score);
 			
