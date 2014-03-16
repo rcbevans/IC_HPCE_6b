@@ -19,6 +19,12 @@ launch_infinite_server : src/bitecoin_server
 		src/bitecoin_server server1-$USER 3 tcp-server 4000; \
 	done;
 
+# Launch an "infinite" server, that will always relaunch
+launch_infinite_test_server : src/bitecoin_test_server
+	while [ 1 ]; do \
+		src/bitecoin_test_server server1-$USER 3 tcp-server 4000; \
+	done;
+
 # Launch a client connected to a local server
 connect_local : src/bitecoin_client
 	src/bitecoin_client client-$USER 3 tcp-client localhost 4000

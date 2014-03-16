@@ -1,61 +1,28 @@
-#ifndef  bitecoin_endpoint_server_hpp
-#define  bitecoin_endpoint_server_hpp
-
-#include <cstdio>
-#include <cstdarg>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <cassert>
-
-#include <vector>
-#include <memory>
-
 #include "bitecoin_protocol.hpp"
+#include "bitecoin_endpoint.hpp"
+#include "bitecoin_endpoint_server.hpp"
 
-#include "bitecoin_hashing.hpp"
+#include <iostream>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h> 
+
 
 namespace bitecoin{
 
-class EndpointServer
-	: public Endpoint
+class TestEndpointServer : public EndpointServer
 {
-protected:
-	EndpointServer(EndpointServer &); // = delete;
-	void operator =(const EndpointServer &); // = delete;
-
-	uint32_t m_protocol;
-	std::string m_exchangeId, m_serverId;
-	std::string m_clientId, m_minerId;
-
-	void CheckSubmission(const Packet_ServerBeginRound *pBeginRound, const submission_t &subClient)
-	{
-		Log(Log_Debug, "Starting to re-hash data.\n");
-		bigint_t correct=HashReference(pBeginRound,subClient.solution.size(), &subClient.solution[0]);
-		Log(Log_Debug, "Rehash done.\n");
-		
-		if(memcmp(correct.limbs, subClient.proof, BIGINT_LENGTH)){
-			Log(Log_Error, "CheckSubmission for submission from %s, proof is not correct.", subClient.clientId.c_str());
-			throw std::runtime_error("CheckSubmission - Proof is not correct.");
-		}
-		
-		Log(Log_Debug, "Hash verified.");
-	}
 public:
-	
-	EndpointServer(
+	explicit TestEndpointServer(
 			std::string exchangeId,
 			std::string serverId,
 			std::unique_ptr<Connection> &conn,
-			int logLevel=1
-		)
-		: Endpoint(conn, std::make_shared<LogDest>(exchangeId, logLevel))
-		, m_exchangeId(exchangeId)
-		, m_serverId(serverId)
-	{}
-		
-	virtual void Run()
-	{
+			int logLevel=1) : EndpointServer(exchangeId, serverId, conn, logLevel){};
+
+void Run()
+{
 		try{
 			Log(Log_Info, "Waiting for client, exchangeId=%s, serverId=%s\n", m_exchangeId.c_str(), m_serverId.c_str());
 			auto beginConnect=RecvPacket<Packet_ClientBeginConnect>();
@@ -76,8 +43,8 @@ public:
 				
 				auto beginRound=std::make_shared<Packet_ServerBeginRound>();
 				beginRound->roundId=roundId;
-				beginRound->roundSalt=rand();
-				beginRound->chainData.resize(16+(rand()%1000));
+				beginRound->roundSalt=100;
+				beginRound->chainData.resize(500);
 				beginRound->maxIndices=16;
 				memset(beginRound->c, 0, BIGINT_LENGTH/2);
 				// These are just arbitrary values. The real exchange may choose
@@ -87,17 +54,18 @@ public:
 				beginRound->c[2]=3418534911;
 				beginRound->c[3]=2138916474;
 				// Again exchange might choose differently
-				beginRound->hashSteps=16+rand()%16;
+				beginRound->hashSteps=20;
 
 				Log(Log_Verbose, "Sending chain data.\n");
 				SendPacket(beginRound);
 				
 				auto requestBid=std::make_shared<Packet_ServerRequestBid>();
 
-				double roundLength=(rand()+1.0)/RAND_MAX;
-				roundLength=-log(roundLength)*2.75+0.25;
-				roundLength=std::max(0.25, std::min(60.0, roundLength));
-				
+				// double roundLength=(rand()+1.0)/RAND_MAX;
+				// roundLength=-log(roundLength)*2.75+0.25;
+				// roundLength=std::max(0.25, std::min(60.0, roundLength));
+				double roundLength = 3;
+
 				timestamp_t start=now();
 				timestamp_t finish=uint64_t(start+roundLength*1e9);
 				
@@ -143,7 +111,41 @@ public:
 		}
 	}
 };
+};
+int main(int argc, char *argv[])
+{
+	if(argc<2){
+		fprintf(stderr, "bitecoin_client client_id logLevel connectionType [arg1 [arg2 ...]]\n");
+		exit(1);
+	}
+	
+	try{
+		std::string clientId=argv[1];
+		std::string minerId="David's Server";
+		
+		int logLevel=atoi(argv[2]);
+		
+		std::vector<std::string> spec;
+		for(int i=3;i<argc;i++){
+			spec.push_back(argv[i]);
+		}		
+		
+		std::unique_ptr<bitecoin::Connection> connection{bitecoin::OpenConnection(spec)};
+		
+		bitecoin::TestEndpointServer endpoint(clientId, minerId, connection, logLevel);
+		endpoint.Run();
 
-}; // bitecoin
+	}catch(std::string &msg){
+		std::cerr<<"Caught error string : "<<msg<<std::endl;
+		return 1;
+	}catch(std::exception &e){
+		std::cerr<<"Caught exception : "<<e.what()<<std::endl;
+		return 1;
+	}catch(...){
+		std::cerr<<"Caught unknown exception."<<std::endl;
+		return 1;
+	}
+	
+	return 0;
+}
 
-#endif
