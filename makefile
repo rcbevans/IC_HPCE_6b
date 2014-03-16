@@ -26,3 +26,12 @@ connect_local : src/bitecoin_client
 # Launch a client connected to a shared exchange
 connect_exchange : src/bitecoin_client
 	src/bitecoin_client client-$(USER) 3 tcp-client $(EXCHANGE_ADDR)  $(EXCHANGE_PORT)
+
+# Launch a client connected to a local server
+miner_connect_local : src/bitecoin_miner
+	src/bitecoin_miner client-$USER 3 tcp-client localhost 4000
+	
+# Launch a client connected to a shared exchange
+miner_connect_exchange : src/bitecoin_miner
+	src/bitecoin_miner client-$(USER) 3 tcp-client $(EXCHANGE_ADDR)  $(EXCHANGE_PORT)
+
