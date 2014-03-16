@@ -15,15 +15,11 @@ launch_pipes : src/bitecoin_server src/bitecoin_client
 
 # Launch an "infinite" server, that will always relaunch
 launch_infinite_server : src/bitecoin_server
-	while [ 1 ]; do \
-		src/bitecoin_server server1-$USER 3 tcp-server 4000; \
-	done;
+	src/bitecoin_server server1-$USER 3 tcp-server 4000;
 
 # Launch an "infinite" server, that will always relaunch
 launch_infinite_test_server : src/bitecoin_test_server
-	while [ 1 ]; do \
-		src/bitecoin_test_server server1-$USER 3 tcp-server 4000; \
-	done;
+	src/bitecoin_test_server server1-$USER 3 tcp-server 4000; 
 
 # Launch a client connected to a local server
 connect_local : src/bitecoin_client
