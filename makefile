@@ -41,3 +41,5 @@ miner_connect_local : src/bitecoin_miner
 miner_connect_exchange : src/bitecoin_miner
 	src/bitecoin_miner client-$(USER) 3 tcp-client $(EXCHANGE_ADDR)  $(EXCHANGE_PORT)
 
+miner_test_connect_local : src/bitecoin_test
+	src/bitecoin_test client-$USER 3 tcp-client localhost 4000
