@@ -62,6 +62,9 @@ public:
         hash::fnv<64> hasher;
         uint64_t chainHash=hasher((const char*)&roundInfo->chainData[0], roundInfo->chainData.size());
 
+        bigint_t x;
+        wide_x_init(&x.limbs[0], uint32_t(0), roundInfo->roundId, roundInfo->roundSalt, chainHash);
+
         unsigned nTrials = 0;
         while (1)
         {
@@ -76,7 +79,7 @@ public:
                 indices[j] = curr;
             }
 
-            bigint_t proof = FastHashReference(roundInfo.get(), indices.size(), &indices[0], chainHash);
+            bigint_t proof = FastHashReference(roundInfo.get(), indices.size(), &indices[0], x);
             double score = wide_as_double(BIGINT_WORDS, proof.limbs);
             Log(Log_Debug, "    Score=%lg", score);
 
