@@ -54,7 +54,7 @@ public:
 		, m_serverId(serverId)
 	{}
 		
-	virtual void Run()
+	void Run()
 	{
 		try{
 			Log(Log_Info, "Waiting for client, exchangeId=%s, serverId=%s\n", m_exchangeId.c_str(), m_serverId.c_str());
