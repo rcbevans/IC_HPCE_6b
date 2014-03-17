@@ -65,13 +65,17 @@ public:
         bigint_t x;
         wide_x_init(&x.limbs[0], uint32_t(0), roundInfo->roundId, roundInfo->roundSalt, chainHash);
 
+        std::vector<uint32_t> indices(roundInfo->maxIndices);
+
+        srand(now());
+
         unsigned nTrials = 0;
-        while (1)
+        do
         {
             ++nTrials;
 
-            Log(Log_Debug, "Trial %d.", nTrials);
-            std::vector<uint32_t> indices(roundInfo->maxIndices);
+            // Log(Log_Debug, "Trial %d.", nTrials);
+            
             uint32_t curr = 0;
             for (unsigned j = 0; j < indices.size(); j++)
             {
@@ -80,23 +84,18 @@ public:
             }
 
             bigint_t proof = FastHashReference(roundInfo.get(), indices.size(), &indices[0], x);
-            double score = wide_as_double(BIGINT_WORDS, proof.limbs);
-            Log(Log_Debug, "    Score=%lg", score);
+            // double score = wide_as_double(BIGINT_WORDS, proof.limbs);
+            // Log(Log_Debug, "    Score=%lg", score);
 
             if (wide_compare(BIGINT_WORDS, proof.limbs, bestProof.limbs) < 0)
             {
+                double score = wide_as_double(BIGINT_WORDS, proof.limbs);
                 Log(Log_Verbose, "    Found new best, nTrials=%d, score=%lg, ratio=%lg.", nTrials, score, worst / score);
                 bestSolution = indices;
                 bestProof = proof;
             }
 
-            double t = now() * 1e-9; // Work out where we are against the deadline
-            double timeBudget = tFinish - t;
-            Log(Log_Debug, "Finish trial %d, time remaining =%lg seconds.", nTrials, timeBudget);
-
-            if (timeBudget <= 0)
-                break;  // We have run out of time, send what we have
-        }
+        } while ((tFinish - now() * 1e-9) > 0);
 
         solution = bestSolution;
         wide_copy(BIGINT_WORDS, pProof, bestProof.limbs);
