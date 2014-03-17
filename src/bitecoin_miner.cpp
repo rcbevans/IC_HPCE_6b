@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <csignal>
 
+#define DIRTY_MAGIC_NUMBER 0xBA2E8BA3
+
 namespace bitecoin
 {
 
@@ -60,42 +62,81 @@ public:
         // list of transactions we are signing. This is the FNV hash:
         // http://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
         hash::fnv<64> hasher;
-        uint64_t chainHash=hasher((const char*)&roundInfo->chainData[0], roundInfo->chainData.size());
+        uint64_t chainHash = hasher((const char *)&roundInfo->chainData[0], roundInfo->chainData.size());
 
         bigint_t x;
         wide_x_init(&x.limbs[0], uint32_t(0), roundInfo->roundId, roundInfo->roundSalt, chainHash);
 
         std::vector<uint32_t> indices(roundInfo->maxIndices);
 
+        unsigned PARALLEL_COUNT = 32;
+
+        uint32_t *parallel_Indices = (uint32_t *)malloc(sizeof(uint32_t) * roundInfo->maxIndices * PARALLEL_COUNT);
+        uint32_t *parallel_Proofs = (uint32_t *)malloc(sizeof(uint32_t) * 8 * PARALLEL_COUNT);
+
         srand(now());
 
         unsigned nTrials = 0;
         do
         {
-            ++nTrials;
+            // ++nTrials;
+
+            nTrials += PARALLEL_COUNT;
+
+            auto parallelExecute = [ = ](unsigned i)
+            {
+                uint32_t curr = 0;
+                for (unsigned j = 0; j < roundInfo->maxIndices; j++)
+                {
+                    // curr += 1 + (rand() % 11);
+                    curr += 1 + (rand() & 15);
+                    parallel_Indices[(i * roundInfo->maxIndices) + j] = curr;
+                }
+
+                bigint_t proof = FastHashReference(roundInfo.get(), roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], x);
+
+                wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
+            };
+
+            tbb::parallel_for<unsigned>(0, PARALLEL_COUNT, parallelExecute);
+
+            for (unsigned i = 0; i < PARALLEL_COUNT; i++)
+            {
+                if (wide_compare(BIGINT_WORDS, &parallel_Proofs[i * 8], bestProof.limbs) < 0)
+                {
+                    double score = wide_as_double(BIGINT_WORDS, &parallel_Proofs[i * 8]);
+                    Log(Log_Verbose, "    Found new best, nTrials=%d, score=%lg, ratio=%lg.", nTrials, score, worst / score);
+                    wide_copy(roundInfo->maxIndices, &bestSolution[0], &parallel_Indices[i * roundInfo->maxIndices]);
+                    wide_copy(8, bestProof.limbs, &parallel_Proofs[i * 8]);
+                }
+            };
 
             // Log(Log_Debug, "Trial %d.", nTrials);
-            
-            uint32_t curr = 0;
-            for (unsigned j = 0; j < indices.size(); j++)
-            {
-                curr = curr + 1 + (rand() % 10);
-                indices[j] = curr;
-            }
 
-            bigint_t proof = FastHashReference(roundInfo.get(), indices.size(), &indices[0], x);
-            // double score = wide_as_double(BIGINT_WORDS, proof.limbs);
-            // Log(Log_Debug, "    Score=%lg", score);
+            // uint32_t curr = 0;
+            // for (unsigned j = 0; j < indices.size(); j++)
+            // {
+            //     curr = curr + 1 + (rand() % 10);
+            //     indices[j] = curr;
+            // }
 
-            if (wide_compare(BIGINT_WORDS, proof.limbs, bestProof.limbs) < 0)
-            {
-                double score = wide_as_double(BIGINT_WORDS, proof.limbs);
-                Log(Log_Verbose, "    Found new best, nTrials=%d, score=%lg, ratio=%lg.", nTrials, score, worst / score);
-                bestSolution = indices;
-                bestProof = proof;
-            }
+            // bigint_t proof = FastHashReference(roundInfo.get(), indices.size(), &indices[0], x);
+            // // double score = wide_as_double(BIGINT_WORDS, proof.limbs);
+            // // Log(Log_Debug, "    Score=%lg", score);
 
-        } while ((tFinish - now() * 1e-9) > 0);
+            // if (wide_compare(BIGINT_WORDS, proof.limbs, bestProof.limbs) < 0)
+            // {
+            //     double score = wide_as_double(BIGINT_WORDS, proof.limbs);
+            //     Log(Log_Verbose, "    Found new best, nTrials=%d, score=%lg, ratio=%lg.", nTrials, score, worst / score);
+            //     bestSolution = indices;
+            //     bestProof = proof;
+            // }
+
+        }
+        while ((tFinish - now() * 1e-9) > 0);
+
+        free(parallel_Proofs);
+        free(parallel_Indices);
 
         solution = bestSolution;
         wide_copy(BIGINT_WORDS, pProof, bestProof.limbs);

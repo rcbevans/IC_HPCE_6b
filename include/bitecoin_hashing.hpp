@@ -13,6 +13,8 @@
 #include <stdexcept>
 #include <algorithm>
 
+#include "tbb/tbb.h"
+
 #include "bitecoin_protocol.hpp"
 
 namespace bitecoin
@@ -38,13 +40,21 @@ void PoolHashStep(bigint_t &x, const Packet_ServerBeginRound *pParams)
     wide_add(4, x.limbs + 4, tmp.limbs + 4, carry);
 }
 
+void FastPoolHashStep(bigint_t &x, const Packet_ServerBeginRound *pParams)
+{
+    bigint_t tmp;
+    fast_wide_mul128(tmp.limbs + 4, tmp.limbs, x.limbs, pParams->c);
+    uint32_t carry = wide_add(4, x.limbs, tmp.limbs, x.limbs + 4);
+    fast_wide_add(4, x.limbs + 4, tmp.limbs + 4, carry);
+}
+
 // Given the various round parameters, this calculates the hash for a particular index value.
 // Multiple hashes of different indices will be combined to produce the overall result.
 bigint_t FastPoolHash(const Packet_ServerBeginRound *pParams, bigint_t &x)
 {
     for (unsigned j = 0; j < pParams->hashSteps; j++)
     {
-        PoolHashStep(x, pParams);
+    	FastPoolHashStep(x, pParams);
     }
     return x;
 }
@@ -64,6 +74,30 @@ bigint_t FastHashReference(
 
     bigint_t acc;
     wide_zero(8, acc.limbs);
+
+
+    //SLOWER THAN ONE CORE DOING IT ALL.... *sigh*
+
+    // uint32_t *dataSet = (uint32_t *)malloc(sizeof(uint32_t) * 8 * nIndices);
+
+    // auto fastPoolHashParFor = [=](unsigned i)
+    // {
+    // 	bigint_t fph = x;
+    //     fph.limbs[0] = pIndices[i];
+        
+    //     bigint_t point = FastPoolHash(pParams, fph);
+
+    //     wide_copy(8, dataSet + (i*8), point.limbs);
+    // };
+
+    // tbb::parallel_for<unsigned>(0, nIndices, fastPoolHashParFor);
+
+    // for (unsigned i = 0; i < nIndices; i++)
+    // {
+    // 	wide_xor(8, acc.limbs, acc.limbs, dataSet + (i * 8));
+    // };
+
+    // free(dataSet);
 
     for (unsigned i = 0; i < nIndices; i++)
     {
