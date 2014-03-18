@@ -69,12 +69,14 @@ public:
 
         std::vector<uint32_t> indices(roundInfo->maxIndices);
 
-        unsigned PARALLEL_COUNT = 32;
+        unsigned PARALLEL_COUNT = 16;
 
         uint32_t *parallel_Indices = (uint32_t *)malloc(sizeof(uint32_t) * roundInfo->maxIndices * PARALLEL_COUNT);
         uint32_t *parallel_Proofs = (uint32_t *)malloc(sizeof(uint32_t) * 8 * PARALLEL_COUNT);
 
         srand(now());
+
+        bestSolution[0] = 3;
 
         unsigned nTrials = 0;
         do
@@ -85,11 +87,11 @@ public:
 
             auto parallelExecute = [ = ](unsigned i)
             {
-                uint32_t curr = 0;
+                uint32_t curr = (rand() & 8191);
                 for (unsigned j = 0; j < roundInfo->maxIndices; j++)
                 {
                     // curr += 1 + (rand() % 11);
-                    curr += 1 + (rand() & 15);
+                    curr += 1 + (rand() & 524287);
                     parallel_Indices[(i * roundInfo->maxIndices) + j] = curr;
                 }
 

@@ -75,7 +75,6 @@ bigint_t FastHashReference(
     bigint_t acc;
     wide_zero(8, acc.limbs);
 
-
     //SLOWER THAN ONE CORE DOING IT ALL.... *sigh*
 
     // uint32_t *dataSet = (uint32_t *)malloc(sizeof(uint32_t) * 8 * nIndices);
