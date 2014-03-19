@@ -30,7 +30,7 @@ __device__ void CudaFastPoolHashStep(bigint_t &x, const uint32_t *d_hashConstant
     bigint_t tmp;
     cuda_wide_mul(4, tmp.limbs + 4, tmp.limbs, x.limbs, d_hashConstant);
     uint32_t carry = cuda_wide_add(4, x.limbs, tmp.limbs, x.limbs + 4);
-    cuda_fast_wide_add(4, x.limbs + 4, tmp.limbs + 4, carry);
+    cuda_wide_add(4, x.limbs + 4, tmp.limbs + 4, carry);
 }
 
 // Given the various round parameters, this calculates the hash for a particular index value.

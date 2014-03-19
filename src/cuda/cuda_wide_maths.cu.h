@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <curand_kernel.h>
+
 namespace bitecoin
 {
 
@@ -51,7 +53,7 @@ __device__ uint32_t cuda_wide_add(unsigned n, uint32_t *res, const uint32_t *a, 
     return carry;
 }
 
-__device__ uint32_t cuda_fast_wide_add(unsigned n, uint32_t *res, const uint32_t *a, uint32_t b)
+__device__ uint32_t cuda_wide_add(unsigned n, uint32_t *res, const uint32_t *a, uint32_t b)
 {
     uint64_t carry = b;
     for (unsigned i = 0; i < n; i++)
@@ -59,14 +61,6 @@ __device__ uint32_t cuda_fast_wide_add(unsigned n, uint32_t *res, const uint32_t
         uint64_t tmp = a[i] + carry;
         res[i] = uint32_t(tmp & 0xFFFFFFFFULL);
         carry = tmp >> 32;
-        if (carry == 0)
-        {
-            for (unsigned j = i + 1; j < n; j++)
-            {
-                res[j] = a[j];
-            }
-            break;
-        }
     }
     return carry;
 }

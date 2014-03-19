@@ -2,3 +2,5 @@ bitecoin_miner
 bitecoin_server
 bitecoin_test_server
 bitecoin_client
+cuda_miner
+pin.log

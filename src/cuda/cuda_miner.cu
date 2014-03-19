@@ -1,75 +1,154 @@
 #include "cuda_miner.cu.h"
 
-namespace bitecoin{
-
-__global__ void runCudaMining(const bigint_t x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, unsigned long long time)
+namespace bitecoin
 {
-	extern __shared__ uint32_t localProofs[];
 
-	int threadID = threadIdx.x;
-	int blockID = blockIdx.x;
-	int globalID = (blockID * blockDim.x) + threadID;
+__global__ void firstCudaRun(const bigint_t x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, unsigned long long time, curandState *d_state)
+{
+    extern __shared__ uint32_t sharedMem[];
+    uint32_t *localIndices = &sharedMem[0];
+    uint32_t *localProofs = &sharedMem[maxIndices];
 
-	curandState state;
-	curand_init (time, globalID, threadID, &state);
+    int threadID = threadIdx.x;
+    int blockID = blockIdx.x;
+    int globalID = (blockID * blockDim.x) + threadID;
 
-	if (threadID == 0)
-	{
-		uint32_t curr = (uint32_t(curand(&state)) & 8191);
+    curand_init (time, globalID, threadID, d_state);
+
+    if (threadID == 0)
+    {
+        uint32_t curr = (4 * blockID) + uint32_t(curand(d_state) & 8191);
         for (unsigned j = 0; j < maxIndices; j++)
         {
-            curr += 1 + (uint32_t(curand(&state)) & 524287);
-            d_ParallelSolutions[(blockID * maxIndices) + j] = curr;
-            // cuPrintf("Thread %d curr: %d", threadID, curr);
+            curr += 1 + (uint32_t(curand(d_state)) & 524287);
+            localIndices[j] = curr;
         }
-	}
+    }
 
-	__syncthreads();
+    __syncthreads();
 
     bigint_t fph = x;
-    fph.limbs[0] = d_ParallelSolutions[globalID];
-
+    fph.limbs[0] = localIndices[threadID];
     bigint_t point = CudaFastPoolHash(d_hashConstant, hashSteps, fph);
 
     cuda_wide_copy(8, &localProofs[threadID * 8], point.limbs);
 
-	__syncthreads();
+    __syncthreads();
 
-	if (threadID == 0)
-	{
-		for (unsigned j = 1; j < maxIndices; j++)
-		{
-			cuda_wide_xor(8, &localProofs[0], &localProofs[0], &localProofs[j * 8]);
-		}
+    if (threadID == 0)
+    {
+        for (unsigned j = 1; j < maxIndices; j++)
+        {
+            cuda_wide_xor(8, &localProofs[0], &localProofs[0], &localProofs[j * 8]);
+        }
 
-		cuda_wide_copy(8, &d_ParallelProofs[blockID * 8], &localProofs[0]);
-	}
+        cuda_wide_copy(8, &d_ParallelProofs[blockID * 8], &localProofs[0]);
+    }
 }
 
-	void cudaMiningRun(unsigned cudaBlockCount, const bigint_t &bestProof, bigint_t &gpuBestProof, uint32_t *gpuBestSolution, const bigint_t &x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, uint32_t *GPUparallelProofs)
-	{
+__global__ void cudaIteration(const bigint_t x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state)
+{
+    extern __shared__ uint32_t sharedMem[];
+    uint32_t *localIndices = &sharedMem[0];
+    uint32_t *localProofs = &sharedMem[maxIndices];
 
-		dim3 grid(cudaBlockCount);
-		dim3 threads(maxIndices);
+    int threadID = threadIdx.x;
+    int blockID = blockIdx.x;
+    // int globalID = (blockID * blockDim.x) + threadID;
 
-		runCudaMining<<< grid, threads, sizeof(uint32_t)*maxIndices*8 >>>(x, d_hashConstant, maxIndices, hashSteps, d_ParallelSolutions, d_ParallelProofs, (unsigned long long)time(NULL));
+    if (threadID == 0)
+    {
+        uint32_t curr = (4 * blockID) + uint32_t(curand(d_state) & 8191);
+        for (unsigned j = 0; j < maxIndices; j++)
+        {
+            curr += 1 + (uint32_t(curand(d_state)) & 524287);
+            localIndices[j] = curr;
+        }
+    }
 
-		getLastCudaError("Kernel execution failed");
+    __syncthreads();
 
-		checkCudaErrors(cudaMemcpy(GPUparallelProofs, d_ParallelProofs, sizeof(uint32_t)*cudaBlockCount*8, cudaMemcpyDeviceToHost));
+    bigint_t fph = x;
+    fph.limbs[0] = localIndices[threadID];
+    bigint_t point = CudaFastPoolHash(d_hashConstant, hashSteps, fph);
 
-		int BestSolution = -1;
-		for(int block = 0; block < cudaBlockCount; block++)
-		{
-			if(cuda_wide_compare(8, &GPUparallelProofs[block * 8], gpuBestProof.limbs) < 0)
-			{
-				BestSolution = block;
-				cuda_wide_copy(8, gpuBestProof.limbs, &GPUparallelProofs[block * 8]);
-			}
-		}
-		if(BestSolution != -1)
-		{
-			checkCudaErrors(cudaMemcpy(gpuBestSolution, d_ParallelSolutions + (BestSolution*maxIndices), sizeof(uint32_t)*maxIndices, cudaMemcpyDeviceToHost));
-		}
-	}
+    cuda_wide_copy(8, &localProofs[threadID * 8], point.limbs);
+
+    __syncthreads();
+
+    if (threadID == 0)
+    {
+        for (unsigned j = 1; j < maxIndices; j++)
+        {
+            cuda_wide_xor(8, &localProofs[0], &localProofs[0], &localProofs[j * 8]);
+        }
+
+        if (cuda_wide_compare(8, &localProofs[0], &d_ParallelProofs[blockID * 8]) < 0)
+        {
+            cuda_wide_copy(maxIndices, &d_ParallelSolutions[blockID * maxIndices], &localIndices[0]);
+            cuda_wide_copy(8, &d_ParallelProofs[blockID * 8], &localProofs[0]);
+        }
+    }
+}
+
+__global__ void cudaReduce(const uint32_t maxIndices, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs)
+{
+    int threadID = threadIdx.x;
+    int blockWidth = blockDim.x;
+
+    for (unsigned toDo = blockWidth; blockWidth <= 1; blockWidth >>= 1)
+    {
+        if (threadID < toDo)
+        {
+            if (cuda_wide_compare(8, &d_ParallelProofs[(threadID * 8) + (toDo * 8)], &d_ParallelProofs[threadID * 8]) < 0)
+            {
+                cuda_wide_copy(8, &d_ParallelProofs[threadID * 8], &d_ParallelProofs[(threadID * 8) + (toDo * 8)]);
+                cuda_wide_copy(maxIndices, &d_ParallelSolutions[threadID * maxIndices], &d_ParallelSolutions[(threadID * maxIndices) + (toDo * maxIndices)]);
+            }
+        }
+        __syncthreads();
+    }
+}
+
+void initialiseGPUArray(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state)
+{
+    dim3 grid(cudaBlockCount);
+    dim3 threads(maxIndices);
+
+    firstCudaRun <<< grid, threads, sizeof(uint32_t)*maxIndices + sizeof(uint32_t)*maxIndices * 8 >>> (x, d_hashConstant, maxIndices, hashSteps, d_ParallelSolutions, d_ParallelProofs, time(NULL), d_state);
+
+    getLastCudaError("Kernel execution failed");
+
+    cudaDeviceSynchronize();
+}
+
+void cudaMiningRun(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs,
+                   curandState *d_state)
+{
+    dim3 grid(cudaBlockCount);
+    dim3 threads(maxIndices);
+
+    cudaIteration <<< grid, threads, sizeof(uint32_t)*maxIndices + sizeof(uint32_t)*maxIndices * 8  >>> (x, d_hashConstant, maxIndices, hashSteps, d_ParallelSolutions, d_ParallelProofs, d_state);
+
+    getLastCudaError("Kernel execution failed");
+
+    cudaDeviceSynchronize();
+}
+
+void cudaParallelReduce(unsigned cudaBlockCount, const uint32_t maxIndices, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, uint32_t *gpuBestSolution, uint32_t *gpuBestProof)
+{
+    dim3 grid(1);
+    dim3 threads(cudaBlockCount / 2);
+
+    cudaReduce <<< grid, threads >>>(maxIndices, d_ParallelSolutions, d_ParallelProofs);
+
+    getLastCudaError("Kernel execution failed");
+
+    checkCudaErrors(cudaMemcpyAsync(gpuBestProof, d_ParallelProofs, sizeof(uint32_t) * 8, cudaMemcpyDeviceToHost));
+
+    checkCudaErrors(cudaMemcpyAsync(gpuBestSolution, d_ParallelSolutions, sizeof(uint32_t)*maxIndices, cudaMemcpyDeviceToHost));
+
+    cudaDeviceSynchronize();
+}
+
 }//End of Bitecoin Namespace
