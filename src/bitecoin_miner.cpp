@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <csignal>
 
+#include "tbb/tbb.h"
+
 #define DIRTY_MAGIC_NUMBER 0xBA2E8BA3
 
 namespace bitecoin
@@ -52,9 +54,6 @@ public:
             We will use this to track the best solution we have created so far.
         */
         std::vector<uint32_t> bestSolution(roundInfo->maxIndices);
-        bigint_t bestProof; //uint32_t [8];
-        //set bestproof.limbs = 1's
-        wide_ones(BIGINT_WORDS, bestProof.limbs);
 
         double worst = pow(2.0, BIGINT_LENGTH * 8); // This is the worst possible score
 
@@ -67,81 +66,86 @@ public:
         bigint_t x;
         wide_x_init(&x.limbs[0], uint32_t(0), roundInfo->roundId, roundInfo->roundSalt, chainHash);
 
-        std::vector<uint32_t> indices(roundInfo->maxIndices);
-
-        unsigned PARALLEL_COUNT = 16;
+        unsigned PARALLEL_COUNT = 32;
 
         uint32_t *parallel_Indices = (uint32_t *)malloc(sizeof(uint32_t) * roundInfo->maxIndices * PARALLEL_COUNT);
         uint32_t *parallel_Proofs = (uint32_t *)malloc(sizeof(uint32_t) * 8 * PARALLEL_COUNT);
 
         srand(now());
 
-        bestSolution[0] = 3;
-
+        //Initial Setup
         unsigned nTrials = 0;
+
+        nTrials += PARALLEL_COUNT;
+
+        auto tbbInitial = [ = ](unsigned i)
+        {
+            uint32_t curr = (rand() & 8191);
+            for (unsigned j = 0; j < roundInfo->maxIndices; j++)
+            {
+                curr += 1 + (rand() & 524287);
+                parallel_Indices[(i * roundInfo->maxIndices) + j] = curr;
+            }
+
+            bigint_t proof = FastHashReference(roundInfo.get(), roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], x);
+
+            wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
+        };
+
+        tbb::parallel_for<unsigned>(0, PARALLEL_COUNT, tbbInitial);
+
         do
         {
-            // ++nTrials;
-
             nTrials += PARALLEL_COUNT;
 
-            auto parallelExecute = [ = ](unsigned i)
+            auto tbbIteration = [ = ](unsigned i)
             {
-                uint32_t curr = (rand() & 8191);
+                uint32_t localSolution[roundInfo->maxIndices];
+                uint32_t curr = 4*i + (rand() & 8191);
                 for (unsigned j = 0; j < roundInfo->maxIndices; j++)
                 {
-                    // curr += 1 + (rand() % 11);
                     curr += 1 + (rand() & 524287);
-                    parallel_Indices[(i * roundInfo->maxIndices) + j] = curr;
+                    localSolution[j] = curr;
                 }
 
-                bigint_t proof = FastHashReference(roundInfo.get(), roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], x);
+                bigint_t proof = FastHashReference(roundInfo.get(), roundInfo->maxIndices, &localSolution[0], x);
 
-                wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
-            };
-
-            tbb::parallel_for<unsigned>(0, PARALLEL_COUNT, parallelExecute);
-
-            for (unsigned i = 0; i < PARALLEL_COUNT; i++)
-            {
-                if (wide_compare(BIGINT_WORDS, &parallel_Proofs[i * 8], bestProof.limbs) < 0)
+                if (wide_compare(BIGINT_WORDS, proof.limbs, &parallel_Proofs[i * 8]) < 0)
                 {
-                    double score = wide_as_double(BIGINT_WORDS, &parallel_Proofs[i * 8]);
-                    Log(Log_Verbose, "    Found new best, nTrials=%d, score=%lg, ratio=%lg.", nTrials, score, worst / score);
-                    wide_copy(roundInfo->maxIndices, &bestSolution[0], &parallel_Indices[i * roundInfo->maxIndices]);
-                    wide_copy(8, bestProof.limbs, &parallel_Proofs[i * 8]);
+                    wide_copy(roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], &localSolution[0]);
+                    wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
                 }
             };
 
-            // Log(Log_Debug, "Trial %d.", nTrials);
-
-            // uint32_t curr = 0;
-            // for (unsigned j = 0; j < indices.size(); j++)
-            // {
-            //     curr = curr + 1 + (rand() % 10);
-            //     indices[j] = curr;
-            // }
-
-            // bigint_t proof = FastHashReference(roundInfo.get(), indices.size(), &indices[0], x);
-            // // double score = wide_as_double(BIGINT_WORDS, proof.limbs);
-            // // Log(Log_Debug, "    Score=%lg", score);
-
-            // if (wide_compare(BIGINT_WORDS, proof.limbs, bestProof.limbs) < 0)
-            // {
-            //     double score = wide_as_double(BIGINT_WORDS, proof.limbs);
-            //     Log(Log_Verbose, "    Found new best, nTrials=%d, score=%lg, ratio=%lg.", nTrials, score, worst / score);
-            //     bestSolution = indices;
-            //     bestProof = proof;
-            // }
+            tbb::parallel_for<unsigned>(0, PARALLEL_COUNT, tbbIteration);
 
         }
         while ((tFinish - now() * 1e-9) > 0);
 
+        //Do the parallel reduction to get our best solution
+        for (int toDo = PARALLEL_COUNT / 2; toDo >= 1; toDo >>= 1)
+        {
+            auto tbbReduce = [ = ](unsigned i)
+            {
+                if (wide_compare(BIGINT_WORDS, &parallel_Proofs[(i * 8) + (toDo * 8)], &parallel_Proofs[i * 8]) < 0)
+                {
+                    wide_copy(8, &parallel_Proofs[i * 8], &parallel_Proofs[(i * 8) + (toDo * 8)]);
+                    wide_copy(roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], &parallel_Indices[(i * roundInfo->maxIndices) + (toDo * roundInfo->maxIndices)]);
+                }
+            };
+
+            tbb::parallel_for<unsigned>(0, toDo, tbbReduce);
+        }
+
+        wide_copy(BIGINT_WORDS, pProof, &parallel_Proofs[0]);
+        wide_copy(roundInfo->maxIndices, &bestSolution[0], &parallel_Indices[0]);
+        solution = bestSolution;
+
+        double score = wide_as_double(BIGINT_WORDS, pProof);
+        Log(Log_Verbose, "    Found best, nTrials=%d, score=%lg, ratio=%lg.", nTrials, score, worst / score);
+
         free(parallel_Proofs);
         free(parallel_Indices);
-
-        solution = bestSolution;
-        wide_copy(BIGINT_WORDS, pProof, bestProof.limbs);
 
         Log(Log_Verbose, "MakeBid - finish. Total trials %d", nTrials);
     }

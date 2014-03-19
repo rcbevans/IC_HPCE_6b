@@ -72,5 +72,4 @@ __global__ void runCudaMining(const bigint_t x, const uint32_t *d_hashConstant, 
 			checkCudaErrors(cudaMemcpy(gpuBestSolution, d_ParallelSolutions + (BestSolution*maxIndices), sizeof(uint32_t)*maxIndices, cudaMemcpyDeviceToHost));
 		}
 	}
-
 }//End of Bitecoin Namespace

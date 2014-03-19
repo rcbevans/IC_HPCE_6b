@@ -201,15 +201,6 @@ uint32_t fast_wide_add(unsigned n, uint32_t *res, const uint32_t *a, uint64_t b)
     return carry;
 }
 
-// if (!carry)
-// {
-// for(unsigned j = i+1; j < n; j++)
-// {
-//  res[j] = a[i];
-// }
-// break;
-// }
-
 /*! Multiply two n-limb numbers to produce a 2n-limb result
     \note All the integers must be distinct, the output cannot overlap the input */
 void wide_mul(unsigned n, uint32_t *res_hi, uint32_t *res_lo, const uint32_t *a, const uint32_t *b)

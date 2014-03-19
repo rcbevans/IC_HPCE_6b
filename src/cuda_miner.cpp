@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <csignal>
 
+#include <thread>
+
 // CUDA runtime
 #include <cuda_runtime.h>
 // #include <curand_kernel.h>
@@ -23,7 +25,12 @@
 namespace bitecoin
 {
 
-    extern void cudaMiningRun(unsigned cudaBlockCount, const bigint_t &bestProof, bigint_t &gpuBestProof, uint32_t *gpuBestSolution, const bigint_t &x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, uint32_t *GPUparallelProofs);
+extern void cudaMiningRun(unsigned cudaBlockCount, const bigint_t &bestProof, bigint_t &gpuBestProof, uint32_t *gpuBestSolution, const bigint_t &x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, uint32_t *GPUparallelProofs);
+
+void threadTask(unsigned cudaBlockCount, const bigint_t &bestProof, bigint_t &gpuBestProof, uint32_t *gpuBestSolution, const bigint_t &x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, uint32_t *GPUparallelProofs)
+{
+    cudaMiningRun(cudaBlockCount, bestProof, gpuBestProof, &gpuBestSolution[0], x, d_hashConstant, maxIndices, hashSteps, d_ParallelSolutions, d_ParallelProofs, GPUparallelProofs);
+}
 
 class cudaEndpointClient : public EndpointClient
 {
@@ -46,12 +53,12 @@ public:
                                             minerId,
                                             conn,
                                             log)
-                                            {
-                                                this->d_hashConstant = d_hashConstant;
-                                                this->d_ParallelProofs = d_ParallelProofs;
-                                                this->gpuParallelProofs = gpuParallelProofs;
-                                                this->CUDA_PARALLEL_COUNT = cuda_jobs;
-                                            };
+    {
+        this->d_hashConstant = d_hashConstant;
+        this->d_ParallelProofs = d_ParallelProofs;
+        this->gpuParallelProofs = gpuParallelProofs;
+        this->CUDA_PARALLEL_COUNT = cuda_jobs;
+    };
 
     void MakeBid(
         const std::shared_ptr<Packet_ServerBeginRound> roundInfo,   // Information about this particular round
@@ -101,9 +108,9 @@ public:
 
         uint32_t *d_ParallelSolutions;
 
-        checkCudaErrors(cudaMalloc((void **)&d_ParallelSolutions, sizeof(uint32_t)*CUDA_PARALLEL_COUNT*roundInfo->maxIndices));
+        checkCudaErrors(cudaMalloc((void **)&d_ParallelSolutions, sizeof(uint32_t)*CUDA_PARALLEL_COUNT * roundInfo->maxIndices));
 
-        checkCudaErrors(cudaMemcpy(d_hashConstant, &roundInfo->c[0], sizeof(uint32_t)*4, cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_hashConstant, &roundInfo->c[0], sizeof(uint32_t) * 4, cudaMemcpyHostToDevice));
 
         // srand(now());
 
@@ -120,12 +127,14 @@ public:
 
             gpuBestProof = bestProof;
 
+            std::thread<> gpuThread(&threadTask, CUDA_PARALLEL_COUNT, bestProof, gpuBestProof, &gpuBestSolution[0], x, d_hashConstant, roundInfo->maxIndices, roundInfo->hashSteps, d_ParallelSolutions, d_ParallelProofs, gpuParallelProofs);
+
             // auto parallelExecute = [ = ](unsigned i)
             // {
             //     uint32_t curr = (rand() & 8191);
             //     for (unsigned j = 0; j < roundInfo->maxIndices; j++)
             //     {
-            //         // curr += 1 + (rand() % 11);
+            //         // curr += 1 + (rand() % 10);
             //         curr += 1 + (rand() & 524287);
             //         parallel_Indices[(i * roundInfo->maxIndices) + j] = curr;
             //     }
@@ -169,9 +178,11 @@ public:
             //     bestProof = proof;
             // }
 
-            cudaMiningRun(CUDA_PARALLEL_COUNT, bestProof, gpuBestProof, &gpuBestSolution[0], x, d_hashConstant, roundInfo->maxIndices, roundInfo->hashSteps, d_ParallelSolutions, d_ParallelProofs, gpuParallelProofs);
+            // cudaMiningRun(CUDA_PARALLEL_COUNT, bestProof, gpuBestProof, &gpuBestSolution[0], x, d_hashConstant, roundInfo->maxIndices, roundInfo->hashSteps, d_ParallelSolutions, d_ParallelProofs, gpuParallelProofs);
 
-            if(wide_compare(BIGINT_WORDS, gpuBestProof.limbs, bestProof.limbs) < 0)
+            gpuThread.join();
+
+            if (wide_compare(BIGINT_WORDS, gpuBestProof.limbs, bestProof.limbs) < 0)
             {
                 double score = wide_as_double(BIGINT_WORDS, gpuBestProof.limbs);
                 Log(Log_Verbose, "    Found new best GPU, score=%lg, ratio=%lg.", score, worst / score);
@@ -233,10 +244,10 @@ int main(int argc, char *argv[])
 
         uint32_t *d_hashConstant, *d_ParallelProofs, *gpuParallelProofs;
 
-        checkCudaErrors(cudaMalloc((void **)&d_hashConstant, sizeof(uint32_t)*4));
-        checkCudaErrors(cudaMalloc((void **)&d_ParallelProofs, sizeof(uint32_t)*CUDA_PARALLEL_COUNT*8));
+        checkCudaErrors(cudaMalloc((void **)&d_hashConstant, sizeof(uint32_t) * 4));
+        checkCudaErrors(cudaMalloc((void **)&d_ParallelProofs, sizeof(uint32_t)*CUDA_PARALLEL_COUNT * 8));
 
-        gpuParallelProofs = (uint32_t *)malloc(sizeof(uint32_t)*CUDA_PARALLEL_COUNT*8);
+        gpuParallelProofs = (uint32_t *)malloc(sizeof(uint32_t) * CUDA_PARALLEL_COUNT * 8);
 
         bitecoin::cudaEndpointClient endpoint(clientId, minerId, connection, logDest, d_hashConstant, d_ParallelProofs, gpuParallelProofs, CUDA_PARALLEL_COUNT);
         endpoint.Run();
