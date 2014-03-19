@@ -13,14 +13,14 @@ __global__ void firstCudaRun(const bigint_t x, const uint32_t *d_hashConstant, c
     int blockID = blockIdx.x;
     int globalID = (blockID * blockDim.x) + threadID;
 
-    curand_init (time, globalID, threadID, d_state);
-
     if (threadID == 0)
     {
-        uint32_t curr = (4 * blockID) + uint32_t(curand(d_state) & 8191);
+    	curand_init (time, globalID, threadID, d_state);
+
+        uint32_t curr = 0;
         for (unsigned j = 0; j < maxIndices; j++)
         {
-            curr += 1 + (uint32_t(curand(d_state)) & 524287);
+            curr += 1 + (4*blockID) + (uint32_t(curand(d_state)) & 268,435,455);
             localIndices[j] = curr;
         }
     }
@@ -54,14 +54,13 @@ __global__ void cudaIteration(const bigint_t x, const uint32_t *d_hashConstant, 
 
     int threadID = threadIdx.x;
     int blockID = blockIdx.x;
-    // int globalID = (blockID * blockDim.x) + threadID;
 
     if (threadID == 0)
     {
-        uint32_t curr = (4 * blockID) + uint32_t(curand(d_state) & 8191);
+        uint32_t curr = 0;
         for (unsigned j = 0; j < maxIndices; j++)
         {
-            curr += 1 + (uint32_t(curand(d_state)) & 524287);
+            curr += 1 + (4*blockID) + (uint32_t(curand(d_state)) & 268,435,455);
             localIndices[j] = curr;
         }
     }

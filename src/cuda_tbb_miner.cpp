@@ -14,9 +14,6 @@
 
 #include <thread>
 
-#include <future>
-#include <chrono>
-
 // CUDA runtime
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
@@ -142,10 +139,10 @@ public:
         //TBB
         auto tbbInitial = [ = ](unsigned i)
         {
-            uint32_t curr = (rand() & 8191);
+            uint32_t curr = 0;
             for (unsigned j = 0; j < roundInfo->maxIndices; j++)
             {
-                curr += 1 + (rand() & 524287);
+                curr +=  1 + (4*i) + (rand() & 268,435,455);
                 parallel_Indices[(i * roundInfo->maxIndices) + j] = curr;
             }
 
@@ -158,17 +155,16 @@ public:
 
         do
         {
-
             cpuTrials += TBB_PARALLEL_COUNT;
 
             //TBB
             auto tbbIteration = [ = ](unsigned i)
             {
                 uint32_t localSolution[roundInfo->maxIndices];
-                uint32_t curr = 4 * i + (rand() & 8191);
+                uint32_t curr = 0;
                 for (unsigned j = 0; j < roundInfo->maxIndices; j++)
                 {
-                    curr += 1 + (rand() & 524287);
+                    curr += 1 + (4*i) + (rand() & 268,435,455);
                     localSolution[j] = curr;
                 }
 
