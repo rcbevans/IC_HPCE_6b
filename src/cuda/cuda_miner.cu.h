@@ -4,7 +4,7 @@
 
 // CUDA runtime
 #include <cuda_runtime.h>
-// #include <curand_kernel.h>
+#include <curand_kernel.h>
 
 // helper functions and utilities to work with CUDA
 #include <helper_cuda.h>

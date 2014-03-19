@@ -3,4 +3,5 @@ bitecoin_server
 bitecoin_test_server
 bitecoin_client
 cuda_miner
+cuda_tbb_miner
 pin.log

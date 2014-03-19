@@ -15,6 +15,10 @@ src/cuda_miner : src/cuda/cuda_miner.o
 	g++ -g -o src/cuda_miner -std=c++11 -O3 -I include/ -I include/cudaInc src/cuda_miner.cpp src/cuda/cuda_miner.o -L /opt/cuda/lib64/ -lcuda -lcudart -ltbb
 	rm src/cuda/cuda_miner.o
 
+src/cuda_tbb_miner : src/cuda/cuda_miner.o
+	g++ -g -o src/cuda_tbb_miner -std=c++11 -O3 -I include/ -I include/cudaInc src/cuda_tbb_miner.cpp src/cuda/cuda_miner.o -L /opt/cuda/lib64/ -lcuda -lcudart -ltbb
+	rm src/cuda/cuda_miner.o
+
 # Launch client and server connected by pipes
 launch_pipes : src/bitecoin_server src/bitecoin_client
 	-rm .fifo_rev
@@ -26,14 +30,14 @@ launch_pipes : src/bitecoin_server src/bitecoin_client
 launch_infinite_server : src/bitecoin_server
 	while [ 1 ]; do \
 		src/bitecoin_server server1-Richy-Rich 3 tcp-server 4000; \
-		sleep 30s; \
+		sleep 15s; \
 	done;
 
 # Launch an "infinite" server, that will always relaunch
 launch_infinite_test_server : src/bitecoin_test_server
 	while [ 1 ]; do \
 		src/bitecoin_test_server server1-Richy-Rich 3 tcp-server 4000; \
-		sleep 30s; \
+		sleep 15s; \
 	done;
 
 # Launch a client connected to a local server
@@ -59,3 +63,11 @@ cuda_miner_connect_local : src/cuda_miner
 # Launch a client connected to a shared exchange
 cuda_miner_connect_exchange : src/cuda_miner
 	src/cuda_miner Richy-Rich 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
+
+# Launch a client connected to a local server
+tbb_cuda_miner_connect_local : src/cuda_tbb_miner
+	src/cuda_tbb_miner Richy-Rich 3 tcp-client localhost 4000
+	
+# Launch a client connected to a shared exchange
+tbb_cuda_miner_connect_exchange : src/cuda_tbb_miner
+	src/cuda_tbb_miner Richy-Rich 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)

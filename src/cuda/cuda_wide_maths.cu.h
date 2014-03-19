@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include <curand_kernel.h>
-
 namespace bitecoin
 {
 
