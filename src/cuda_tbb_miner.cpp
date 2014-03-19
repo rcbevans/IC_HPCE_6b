@@ -27,9 +27,10 @@
 namespace bitecoin
 {
 
-extern void initialiseGPUArray(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state);
+extern void initialiseGPUArray(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state, uint32_t randomizer);
 
-extern void cudaMiningRun(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state);
+extern void cudaMiningRun(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs,
+                   curandState *d_state, uint32_t randomizer);
 
 extern void cudaParallelReduce(unsigned cudaBlockCount, const uint32_t maxIndices, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, uint32_t *gpuBestSolution, uint32_t *gpuBestProof);
 
@@ -86,6 +87,7 @@ public:
         wide_ones(BIGINT_WORDS, bestProof.limbs);
 
         double worst = pow(2.0, BIGINT_LENGTH * 8); // This is the worst possible score
+        uint32_t randAnd = (uint32_t) pow(2.0, roundInfo->maxIndices) - 1;
 
         // Incorporate the existing block chain data - in a real system this is the
         // list of transactions we are signing. This is the FNV hash:
@@ -99,7 +101,7 @@ public:
         std::vector<uint32_t> indices(roundInfo->maxIndices);
 
         //Define TBB shit
-        unsigned TBB_PARALLEL_COUNT = 32;
+        unsigned TBB_PARALLEL_COUNT = 16;
 
         uint32_t *parallel_Indices = (uint32_t *)malloc(sizeof(uint32_t) * roundInfo->maxIndices * TBB_PARALLEL_COUNT);
         uint32_t *parallel_Proofs = (uint32_t *)malloc(sizeof(uint32_t) * 8 * TBB_PARALLEL_COUNT);
@@ -123,13 +125,13 @@ public:
 
         auto runGPU = [ = , &gpuTrials]
         {
-            initialiseGPUArray(CUDA_PARALLEL_COUNT, roundInfo->maxIndices, roundInfo->hashSteps, x, d_hashConstant, d_ParallelSolutions, d_ParallelProofs, d_state);
+            initialiseGPUArray(CUDA_PARALLEL_COUNT, roundInfo->maxIndices, roundInfo->hashSteps, x, d_hashConstant, d_ParallelSolutions, d_ParallelProofs, d_state, randAnd);
 
             do
             {
                 gpuTrials += CUDA_PARALLEL_COUNT;
 
-                cudaMiningRun(CUDA_PARALLEL_COUNT, roundInfo->maxIndices, roundInfo->hashSteps, x, d_hashConstant, d_ParallelSolutions, d_ParallelProofs, d_state);
+                cudaMiningRun(CUDA_PARALLEL_COUNT, roundInfo->maxIndices, roundInfo->hashSteps, x, d_hashConstant, d_ParallelSolutions, d_ParallelProofs, d_state, randAnd);
             }
             while ((tFinish - now() * 1e-9) > 0);
         };
@@ -139,10 +141,10 @@ public:
         //TBB
         auto tbbInitial = [ = ](unsigned i)
         {
-            uint32_t curr = 0;
+            uint32_t curr = (rand() & randAnd);
             for (unsigned j = 0; j < roundInfo->maxIndices; j++)
             {
-                curr +=  1 + (4*i) + (rand() & 268,435,455);
+                curr +=  1 + (rand() & randAnd);
                 parallel_Indices[(i * roundInfo->maxIndices) + j] = curr;
             }
 
@@ -161,10 +163,10 @@ public:
             auto tbbIteration = [ = ](unsigned i)
             {
                 uint32_t localSolution[roundInfo->maxIndices];
-                uint32_t curr = 0;
+                uint32_t curr = (4 * i) + (rand() & randAnd);
                 for (unsigned j = 0; j < roundInfo->maxIndices; j++)
                 {
-                    curr += 1 + (4*i) + (rand() & 268,435,455);
+                    curr += 1 + (rand() & randAnd);
                     localSolution[j] = curr;
                 }
 
@@ -261,7 +263,7 @@ int main(int argc, char *argv[])
 
         std::unique_ptr<bitecoin::Connection> connection {bitecoin::OpenConnection(spec)};
 
-        unsigned CUDA_PARALLEL_COUNT = 512;
+        unsigned CUDA_PARALLEL_COUNT = 256;
 
         uint32_t *d_hashConstant, *d_ParallelProofs;
 

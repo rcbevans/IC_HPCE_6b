@@ -3,7 +3,7 @@
 namespace bitecoin
 {
 
-__global__ void firstCudaRun(const bigint_t x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, unsigned long long time, curandState *d_state)
+__global__ void firstCudaRun(const bigint_t x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, unsigned long long time, curandState *d_state, uint32_t randomizer)
 {
     extern __shared__ uint32_t sharedMem[];
     uint32_t *localIndices = &sharedMem[0];
@@ -17,10 +17,10 @@ __global__ void firstCudaRun(const bigint_t x, const uint32_t *d_hashConstant, c
     {
     	curand_init (time, globalID, threadID, d_state);
 
-        uint32_t curr = 0;
+        uint32_t curr = (4*blockID) + (uint32_t(curand(d_state)) & randomizer);
         for (unsigned j = 0; j < maxIndices; j++)
         {
-            curr += 1 + (4*blockID) + (uint32_t(curand(d_state)) & 268,435,455);
+            curr += 1 + (4*blockID) + (uint32_t(curand(d_state)) & randomizer);
             localIndices[j] = curr;
         }
     }
@@ -46,7 +46,7 @@ __global__ void firstCudaRun(const bigint_t x, const uint32_t *d_hashConstant, c
     }
 }
 
-__global__ void cudaIteration(const bigint_t x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state)
+__global__ void cudaIteration(const bigint_t x, const uint32_t *d_hashConstant, const uint32_t maxIndices, const uint32_t hashSteps, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state, uint32_t randomizer)
 {
     extern __shared__ uint32_t sharedMem[];
     uint32_t *localIndices = &sharedMem[0];
@@ -57,10 +57,10 @@ __global__ void cudaIteration(const bigint_t x, const uint32_t *d_hashConstant, 
 
     if (threadID == 0)
     {
-        uint32_t curr = 0;
+        uint32_t curr = (4*blockID) + (uint32_t(curand(d_state)) & randomizer);
         for (unsigned j = 0; j < maxIndices; j++)
         {
-            curr += 1 + (4*blockID) + (uint32_t(curand(d_state)) & 268,435,455);
+            curr += 1 + (uint32_t(curand(d_state)) & randomizer);
             localIndices[j] = curr;
         }
     }
@@ -109,12 +109,12 @@ __global__ void cudaReduce(const uint32_t maxIndices, uint32_t *d_ParallelSoluti
     }
 }
 
-void initialiseGPUArray(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state)
+void initialiseGPUArray(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state, uint32_t randomizer)
 {
     dim3 grid(cudaBlockCount);
     dim3 threads(maxIndices);
 
-    firstCudaRun <<< grid, threads, sizeof(uint32_t)*maxIndices + sizeof(uint32_t)*maxIndices * 8 >>> (x, d_hashConstant, maxIndices, hashSteps, d_ParallelSolutions, d_ParallelProofs, time(NULL), d_state);
+    firstCudaRun <<< grid, threads, sizeof(uint32_t)*maxIndices + sizeof(uint32_t)*maxIndices * 8 >>> (x, d_hashConstant, maxIndices, hashSteps, d_ParallelSolutions, d_ParallelProofs, time(NULL), d_state, randomizer);
 
     getLastCudaError("Kernel execution failed");
 
@@ -122,12 +122,12 @@ void initialiseGPUArray(unsigned cudaBlockCount, const uint32_t maxIndices, cons
 }
 
 void cudaMiningRun(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs,
-                   curandState *d_state)
+                   curandState *d_state, uint32_t randomizer)
 {
     dim3 grid(cudaBlockCount);
     dim3 threads(maxIndices);
 
-    cudaIteration <<< grid, threads, sizeof(uint32_t)*maxIndices + sizeof(uint32_t)*maxIndices * 8  >>> (x, d_hashConstant, maxIndices, hashSteps, d_ParallelSolutions, d_ParallelProofs, d_state);
+    cudaIteration <<< grid, threads, sizeof(uint32_t)*maxIndices + sizeof(uint32_t)*maxIndices * 8  >>> (x, d_hashConstant, maxIndices, hashSteps, d_ParallelSolutions, d_ParallelProofs, d_state, randomizer);
 
     getLastCudaError("Kernel execution failed");
 

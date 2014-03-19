@@ -9,7 +9,7 @@ LDLIBS += -ltbb
 # For your makefile, add TBB and OpenCL as appropriate
 
 src/cuda/cuda_miner.o :
-	nvcc -c -I include/ -I  include/cudaInc/ src/cuda/cuda_miner.cu -o src/cuda/cuda_miner.o
+	nvcc -c -arch=sm_20 -use_fast_math --optimize 3 -I include/ -I  include/cudaInc/ src/cuda/cuda_miner.cu -o src/cuda/cuda_miner.o
 
 src/cuda_miner : src/cuda/cuda_miner.o
 	g++ -g -o src/cuda_miner -std=c++11 -O3 -I include/ -I include/cudaInc src/cuda_miner.cpp src/cuda/cuda_miner.o -L /opt/cuda/lib64/ -lcuda -lcudart -ltbb
