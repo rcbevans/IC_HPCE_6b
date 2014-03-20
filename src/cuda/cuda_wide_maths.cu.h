@@ -122,6 +122,16 @@ __device__ void cuda_wide_mul(unsigned n, uint32_t *res_hi, uint32_t *res_lo, co
     }
     res_hi[n - 1] = acc;
 }
+
+__device__ double cuda_wide_as_double(unsigned n, const uint32_t *x)
+{
+    double acc = 0;
+    for (unsigned i = 0; i < n; i++)
+    {
+        acc += ldexp((double)x[i], i * 32);
+    }
+    return acc;
+}
 }//End of namespace
 
 #endif

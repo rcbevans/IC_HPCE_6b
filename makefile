@@ -57,6 +57,14 @@ miner_connect_exchange : src/bitecoin_miner
 	src/bitecoin_miner Richy-Rich 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
 
 # Launch a client connected to a local server
+sneaky_miner_connect_local : src/sneaky_miner
+	src/sneaky_miner Richy-Rich 3 tcp-client localhost 4000
+	
+# Launch a client connected to a shared exchange
+sneaky_miner_connect_exchange : src/sneaky_miner
+	src/sneaky_miner Richy-Rich 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
+
+# Launch a client connected to a local server
 cuda_miner_connect_local : src/cuda_miner
 	src/cuda_miner Richy-Rich 3 tcp-client localhost 4000
 	

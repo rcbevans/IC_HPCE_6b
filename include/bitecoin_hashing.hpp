@@ -101,7 +101,6 @@ bigint_t FastHashReference(
         if (i > 0 && pIndices[i - 1] >= pIndices[i])
             throw std::invalid_argument("HashReference - Indices are not in monotonically increasing order.");
 
-
         //Fast pool hash
         bigint_t fph = x;
         fph.limbs[0] = pIndices[i];
