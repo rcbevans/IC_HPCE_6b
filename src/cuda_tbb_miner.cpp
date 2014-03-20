@@ -27,20 +27,22 @@
 namespace bitecoin
 {
 
-extern void initialiseGPUArray(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, curandState *d_state, uint32_t randomizer);
+//Extern Declarations for Cuda
+extern void cudaInit(const unsigned cudaDim, const uint32_t hashSteps, const bigint_t &x, const bigint_t &nLessOne, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, const unsigned baseNum);
 
-extern void cudaMiningRun(unsigned cudaBlockCount, const uint32_t maxIndices, const uint32_t hashSteps, const bigint_t &x, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs,
-                   curandState *d_state, uint32_t randomizer);
+extern void cudaIteration(const unsigned cudaDim, const unsigned baseNum, const unsigned iteration, const uint32_t hashSteps, const bigint_t &x, const bigint_t &nLessOne, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs);
 
-extern void cudaParallelReduce(unsigned cudaBlockCount, const uint32_t maxIndices, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, uint32_t *gpuBestSolution, uint32_t *gpuBestProof);
+void cudaParallelReduce(const unsigned cudaDim, const uint32_t maxIndices, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, uint32_t *gpuBestSolution, uint32_t *gpuBestProof);
+
+//
 
 class cudaEndpointClient : public EndpointClient
 {
     //using EndpointClient::EndpointClient; //C++11 only!
 
 protected:
-    uint32_t *d_hashConstant, *d_ParallelProofs, *gpuParallelProofs;
-    unsigned CUDA_PARALLEL_COUNT;
+    uint32_t *d_hashConstant, *d_ParallelProofs, *d_ParallelSolutions;
+    unsigned CUDA_PARALLEL_COUNT, TBB_PARALLEL_COUNT;
 
 public:
 
@@ -50,14 +52,18 @@ public:
                                 std::shared_ptr<ILog> &log,
                                 uint32_t *d_hashConstant,
                                 uint32_t *d_ParallelProofs,
-                                unsigned cuda_jobs) : EndpointClient(clientId,
+                                uint32_t *d_ParallelSolutions,
+                                unsigned cuda_jobs,
+                                unsigned tbb_jobs) : EndpointClient(clientId,
                                             minerId,
                                             conn,
                                             log)
     {
         this->d_hashConstant = d_hashConstant;
         this->d_ParallelProofs = d_ParallelProofs;
+        this->d_ParallelSolutions = d_ParallelSolutions;
         this->CUDA_PARALLEL_COUNT = cuda_jobs;
+        this->TBB_PARALLEL_COUNT = tbb_jobs;
     };
 
     void MakeBid(
@@ -82,8 +88,8 @@ public:
         */
         std::vector<uint32_t> bestSolution(roundInfo->maxIndices);
         std::vector<uint32_t> gpuBestSolution(roundInfo->maxIndices);
-        bigint_t bestProof, gpuBestProof; //uint32_t [8];
-        //set bestProof.limbs = 1's
+        bigint_t bestProof, gpuBestProof;
+
         wide_ones(BIGINT_WORDS, bestProof.limbs);
 
         double worst = pow(2.0, BIGINT_LENGTH * 8); // This is the worst possible score
@@ -101,85 +107,90 @@ public:
         std::vector<uint32_t> indices(roundInfo->maxIndices);
 
         //Define TBB shit
-        unsigned TBB_PARALLEL_COUNT = 16;
-
         uint32_t *parallel_Indices = (uint32_t *)malloc(sizeof(uint32_t) * roundInfo->maxIndices * TBB_PARALLEL_COUNT);
         uint32_t *parallel_Proofs = (uint32_t *)malloc(sizeof(uint32_t) * 8 * TBB_PARALLEL_COUNT);
 
-        //Seed CPU random Numbers
-        srand(now());
-
         //Define GPU shit
-        uint32_t *d_ParallelSolutions;
-        checkCudaErrors(cudaMalloc((void **)&d_ParallelSolutions, sizeof(uint32_t)*CUDA_PARALLEL_COUNT * roundInfo->maxIndices));
-
         checkCudaErrors(cudaMemcpy(d_hashConstant, &roundInfo->c[0], sizeof(uint32_t) * 4, cudaMemcpyHostToDevice));
-
-        curandState *d_state;
-        checkCudaErrors(cudaMalloc((void **)&d_state, sizeof(curandState)));
 
         unsigned gpuTrials = 0;
         unsigned cpuTrials = 0;
+
+        //Initial Setup
+        uint32_t curr = 0;
+        for (unsigned j = 0; j < roundInfo->maxIndices - 1; j++)
+        {
+            curr += 1 + (rand() & 15);
+            gpuBestSolution[j] = curr;
+            bestSolution[j] = curr;
+        }
+
+        bigint_t nLessOne = initialHashReference(roundInfo.get(), roundInfo->maxIndices, &bestSolution[0], x);
+        unsigned baseNum = roundInfo->maxIndices * 16;
+        unsigned maxNum = uint32_t(0xFFFFFFFF);
 
         cpuTrials += TBB_PARALLEL_COUNT;
 
         auto runGPU = [ = , &gpuTrials]
         {
-            initialiseGPUArray(CUDA_PARALLEL_COUNT, roundInfo->maxIndices, roundInfo->hashSteps, x, d_hashConstant, d_ParallelSolutions, d_ParallelProofs, d_state, randAnd);
+            cudaInit(CUDA_PARALLEL_COUNT, roundInfo->hashSteps, x, nLessOne, d_hashConstant, d_ParallelSolutions, d_ParallelProofs, baseNum);
+
+            gpuTrials += CUDA_PARALLEL_COUNT;
 
             do
             {
+                cudaIteration(CUDA_PARALLEL_COUNT, baseNum, gpuTrials/CUDA_PARALLEL_COUNT, roundInfo->hashSteps, x, nLessOne, d_hashConstant, d_ParallelSolutions, d_ParallelProofs);
+
                 gpuTrials += CUDA_PARALLEL_COUNT;
 
-                cudaMiningRun(CUDA_PARALLEL_COUNT, roundInfo->maxIndices, roundInfo->hashSteps, x, d_hashConstant, d_ParallelSolutions, d_ParallelProofs, d_state, randAnd);
             }
             while ((tFinish - now() * 1e-9) > 0);
         };
 
         std::thread runGPUThread(runGPU);
 
-        //TBB
         auto tbbInitial = [ = ](unsigned i)
         {
-            uint32_t curr = (rand() & randAnd);
-            for (unsigned j = 0; j < roundInfo->maxIndices; j++)
+            for (unsigned j = 0; j < roundInfo->maxIndices - 1; j++)
             {
-                curr +=  1 + (rand() & randAnd);
-                parallel_Indices[(i * roundInfo->maxIndices) + j] = curr;
+                parallel_Indices[(i * roundInfo->maxIndices) + j] = bestSolution[j];
             }
 
-            bigint_t proof = FastHashReference(roundInfo.get(), roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], x);
+            uint32_t randomIndex = maxNum - TBB_PARALLEL_COUNT - cpuTrials - i;
+
+            bigint_t proof = oneHashReference(roundInfo.get(),
+                                              randomIndex,
+                                              x,
+                                              nLessOne);
 
             wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
         };
 
         tbb::parallel_for<unsigned>(0, TBB_PARALLEL_COUNT, tbbInitial);
 
+        cpuTrials += TBB_PARALLEL_COUNT;
+
         do
         {
-            cpuTrials += TBB_PARALLEL_COUNT;
-
-            //TBB
             auto tbbIteration = [ = ](unsigned i)
             {
-                uint32_t localSolution[roundInfo->maxIndices];
-                uint32_t curr = (4 * i) + (rand() & randAnd);
-                for (unsigned j = 0; j < roundInfo->maxIndices; j++)
-                {
-                    curr += 1 + (rand() & randAnd);
-                    localSolution[j] = curr;
-                }
+                uint32_t randomIndex = maxNum - TBB_PARALLEL_COUNT - cpuTrials - i;
 
-                bigint_t proof = FastHashReference(roundInfo.get(), roundInfo->maxIndices, &localSolution[0], x);
+                bigint_t proof = oneHashReference(roundInfo.get(),
+                                                  randomIndex,
+                                                  x,
+                                                  nLessOne);
 
                 if (wide_compare(BIGINT_WORDS, proof.limbs, &parallel_Proofs[i * 8]) < 0)
                 {
-                    wide_copy(roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], &localSolution[0]);
+                    wide_copy(1, &parallel_Indices[(i * roundInfo->maxIndices) + roundInfo->maxIndices - 1], &randomIndex);
                     wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
                 }
             };
 
             tbb::parallel_for<unsigned>(0, TBB_PARALLEL_COUNT, tbbIteration);
+
+            cpuTrials += TBB_PARALLEL_COUNT;
         }
         while ((tFinish - now() * 1e-9) > 0);
 
@@ -212,12 +223,11 @@ public:
 
         reduceThread.join();
 
-        checkCudaErrors(cudaFree(d_ParallelSolutions));
-
         if (wide_compare(BIGINT_WORDS, gpuBestProof.limbs, bestProof.limbs) < 0)
         {
+            Log(Log_Verbose, "Accepting GPU Answer.");
             wide_copy(8, bestProof.limbs, gpuBestProof.limbs);
-            wide_copy(roundInfo->maxIndices, &bestSolution[0], &gpuBestSolution[0]);
+            wide_copy(1, &bestSolution[roundInfo->maxIndices], &gpuBestSolution[roundInfo->maxIndices]);
         }
 
         solution = bestSolution;
@@ -263,14 +273,16 @@ int main(int argc, char *argv[])
 
         std::unique_ptr<bitecoin::Connection> connection {bitecoin::OpenConnection(spec)};
 
-        unsigned CUDA_PARALLEL_COUNT = 256;
+        unsigned CUDA_PARALLEL_COUNT = 128;
+        unsigned TBB_PARALLEL_COUNT = 32;
 
-        uint32_t *d_hashConstant, *d_ParallelProofs;
+        uint32_t *d_hashConstant, *d_ParallelProofs, *d_ParallelSolutions;
 
         checkCudaErrors(cudaMalloc((void **)&d_hashConstant, sizeof(uint32_t) * 4));
-        checkCudaErrors(cudaMalloc((void **)&d_ParallelProofs, sizeof(uint32_t)*CUDA_PARALLEL_COUNT * 8));
+        checkCudaErrors(cudaMalloc((void **)&d_ParallelProofs, sizeof(uint32_t) * CUDA_PARALLEL_COUNT * CUDA_PARALLEL_COUNT * 8));
+        checkCudaErrors(cudaMalloc((void **)&d_ParallelSolutions, sizeof(uint32_t) * CUDA_PARALLEL_COUNT * CUDA_PARALLEL_COUNT));
 
-        bitecoin::cudaEndpointClient endpoint(clientId, minerId, connection, logDest, d_hashConstant, d_ParallelProofs, CUDA_PARALLEL_COUNT);
+        bitecoin::cudaEndpointClient endpoint(clientId, minerId, connection, logDest, d_hashConstant, d_ParallelProofs, d_ParallelSolutions, CUDA_PARALLEL_COUNT, TBB_PARALLEL_COUNT);
         endpoint.Run();
 
     }

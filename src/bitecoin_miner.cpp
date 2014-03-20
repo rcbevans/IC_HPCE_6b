@@ -69,8 +69,6 @@ public:
         uint32_t *parallel_Indices = (uint32_t *)malloc(sizeof(uint32_t) * roundInfo->maxIndices * PARALLEL_COUNT);
         uint32_t *parallel_Proofs = (uint32_t *)malloc(sizeof(uint32_t) * 8 * PARALLEL_COUNT);
 
-        srand(now());
-
         //Initial Setup
 
         uint32_t curr = 0;
@@ -91,8 +89,7 @@ public:
             {
                 parallel_Indices[(i * roundInfo->maxIndices) + j] = bestSolution[j];
             }
-            // uint32_t randomIndex = roundInfo->maxIndices + (rand() & 268435455);
-
+            
             uint32_t randomIndex = baseNum + (nTrials << 7) + i;
 
             bigint_t proof = oneHashReference(roundInfo.get(),
@@ -111,8 +108,6 @@ public:
         {
             auto tbbIteration = [ = ](unsigned i)
             {
-                // uint32_t randomIndex = roundInfo->maxIndices + (rand() & 268435455);
-
                 uint32_t randomIndex = baseNum + (nTrials << 6) + (i << 3);
 
                 bigint_t proof = oneHashReference(roundInfo.get(),

@@ -129,29 +129,6 @@ bigint_t initialHashReference(
     bigint_t acc;
     wide_zero(8, acc.limbs);
 
-    //SLOWER THAN ONE CORE DOING IT ALL.... *sigh*
-
-    // uint32_t *dataSet = (uint32_t *)malloc(sizeof(uint32_t) * 8 * nIndices);
-
-    // auto fastPoolHashParFor = [=](unsigned i)
-    // {
-    //  bigint_t fph = x;
-    //     fph.limbs[0] = pIndices[i];
-
-    //     bigint_t point = FastPoolHash(pParams, fph);
-
-    //     wide_copy(8, dataSet + (i*8), point.limbs);
-    // };
-
-    // tbb::parallel_for<unsigned>(0, nIndices, fastPoolHashParFor);
-
-    // for (unsigned i = 0; i < nIndices; i++)
-    // {
-    //  wide_xor(8, acc.limbs, acc.limbs, dataSet + (i * 8));
-    // };
-
-    // free(dataSet);
-
     for (unsigned i = 0; i < nIndices - 1; i++)
     {
         if (i > 0 && pIndices[i - 1] >= pIndices[i])
@@ -176,7 +153,6 @@ bigint_t oneHashReference(const Packet_ServerBeginRound *pParams,
                           const bigint_t &x,
                           const bigint_t &nLessOne)
 {
-
     bigint_t acc;
     wide_zero(8, acc.limbs);
 

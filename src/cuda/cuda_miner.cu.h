@@ -20,10 +20,10 @@
 
 namespace bitecoin
 {
-	struct bigint_t
-	{
-	    uint32_t limbs[NLIMBS];
-	};
+struct bigint_t
+{
+    uint32_t limbs[NLIMBS];
+};
 
 __device__ void CudaFastPoolHashStep(bigint_t &x, const uint32_t *d_hashConstant)
 {
@@ -39,9 +39,29 @@ __device__ bigint_t CudaFastPoolHash(const uint32_t *d_hashConstant, const uint3
 {
     for (unsigned j = 0; j < hashSteps; j++)
     {
-    	CudaFastPoolHashStep(x, d_hashConstant);
+        CudaFastPoolHashStep(x, d_hashConstant);
     }
     return x;
+}
+
+__device__ bigint_t oneHashReference(const uint32_t *d_hashConstant,
+                                     const uint32_t hashSteps,
+                                     const uint32_t index,
+                                     const bigint_t &x,
+                                     const bigint_t &nLessOne)
+{
+    bigint_t acc;
+
+    bigint_t fph = x;
+    fph.limbs[0] = index;
+
+    // Calculate the hash for this specific point
+    bigint_t point = CudaFastPoolHash(d_hashConstant, hashSteps, fph);
+
+    // Combine the hashes of the points together using xor
+    cuda_wide_xor(8, acc.limbs, nLessOne.limbs, point.limbs);
+
+    return acc;
 }
 
 }//Close namespace
