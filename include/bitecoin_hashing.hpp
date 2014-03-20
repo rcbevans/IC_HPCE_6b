@@ -116,6 +116,82 @@ bigint_t FastHashReference(
     return acc;
 }
 
+bigint_t initialHashReference(
+    const Packet_ServerBeginRound *pParams,
+    unsigned nIndices,
+    const uint32_t *pIndices,
+    const bigint_t &x
+)
+{
+    if (nIndices > pParams->maxIndices)
+        throw std::invalid_argument("HashReference - Too many indices for parameter set.");
+
+    bigint_t acc;
+    wide_zero(8, acc.limbs);
+
+    //SLOWER THAN ONE CORE DOING IT ALL.... *sigh*
+
+    // uint32_t *dataSet = (uint32_t *)malloc(sizeof(uint32_t) * 8 * nIndices);
+
+    // auto fastPoolHashParFor = [=](unsigned i)
+    // {
+    //  bigint_t fph = x;
+    //     fph.limbs[0] = pIndices[i];
+
+    //     bigint_t point = FastPoolHash(pParams, fph);
+
+    //     wide_copy(8, dataSet + (i*8), point.limbs);
+    // };
+
+    // tbb::parallel_for<unsigned>(0, nIndices, fastPoolHashParFor);
+
+    // for (unsigned i = 0; i < nIndices; i++)
+    // {
+    //  wide_xor(8, acc.limbs, acc.limbs, dataSet + (i * 8));
+    // };
+
+    // free(dataSet);
+
+    for (unsigned i = 0; i < nIndices - 1; i++)
+    {
+        if (i > 0 && pIndices[i - 1] >= pIndices[i])
+            throw std::invalid_argument("HashReference - Indices are not in monotonically increasing order.");
+
+
+        //Fast pool hash
+        bigint_t fph = x;
+        fph.limbs[0] = pIndices[i];
+
+        // Calculate the hash for this specific point
+        bigint_t point = FastPoolHash(pParams, fph);
+
+        // Combine the hashes of the points together using xor
+        wide_xor(8, acc.limbs, acc.limbs, point.limbs);
+    }
+    return acc;
+}
+
+bigint_t oneHashReference(const Packet_ServerBeginRound *pParams,
+                          const uint32_t index,
+                          const bigint_t &x,
+                          const bigint_t &nLessOne)
+{
+
+    bigint_t acc;
+    wide_zero(8, acc.limbs);
+
+    bigint_t fph = x;
+    fph.limbs[0] = index;
+
+    // Calculate the hash for this specific point
+    bigint_t point = FastPoolHash(pParams, fph);
+
+    // Combine the hashes of the points together using xor
+    wide_xor(8, acc.limbs, nLessOne.limbs, point.limbs);
+
+    return acc;
+}
+
 // Given the various round parameters, this calculates the hash for a particular index value.
 // Multiple hashes of different indices will be combined to produce the overall result.
 bigint_t PoolHash(const Packet_ServerBeginRound *pParams, uint32_t index)

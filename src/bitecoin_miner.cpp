@@ -72,50 +72,64 @@ public:
         srand(now());
 
         //Initial Setup
-        unsigned nTrials = 0;
 
-        nTrials += PARALLEL_COUNT;
+        uint32_t curr = 0;
+        for (unsigned j = 0; j < roundInfo->maxIndices - 1; j++)
+        {
+            curr += 1 + (rand() & 15);
+            bestSolution[j] = curr;
+        }
+
+        bigint_t nLessOne = initialHashReference(roundInfo.get(), roundInfo->maxIndices, &bestSolution[0], x);
+        unsigned baseNum = roundInfo->maxIndices * 16;
+
+        unsigned nTrials = 0;
 
         auto tbbInitial = [ = ](unsigned i)
         {
-            uint32_t curr = (rand() & 8191);
-            for (unsigned j = 0; j < roundInfo->maxIndices; j++)
+            for (unsigned j = 0; j < roundInfo->maxIndices - 1; j++)
             {
-                curr += 1 + (rand() & 524287);
-                parallel_Indices[(i * roundInfo->maxIndices) + j] = curr;
+                parallel_Indices[(i * roundInfo->maxIndices) + j] = bestSolution[j];
             }
+            // uint32_t randomIndex = roundInfo->maxIndices + (rand() & 268435455);
 
-            bigint_t proof = FastHashReference(roundInfo.get(), roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], x);
+            uint32_t randomIndex = baseNum + (nTrials << 7) + i;
+
+            bigint_t proof = oneHashReference(roundInfo.get(),
+                                              randomIndex,
+                                              x,
+                                              nLessOne);
 
             wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
         };
 
         tbb::parallel_for<unsigned>(0, PARALLEL_COUNT, tbbInitial);
 
+        nTrials += PARALLEL_COUNT;
+
         do
         {
-            nTrials += PARALLEL_COUNT;
-
             auto tbbIteration = [ = ](unsigned i)
             {
-                uint32_t localSolution[roundInfo->maxIndices];
-                uint32_t curr = 4*i + (rand() & 8191);
-                for (unsigned j = 0; j < roundInfo->maxIndices; j++)
-                {
-                    curr += 1 + (rand() & 524287);
-                    localSolution[j] = curr;
-                }
+                // uint32_t randomIndex = roundInfo->maxIndices + (rand() & 268435455);
 
-                bigint_t proof = FastHashReference(roundInfo.get(), roundInfo->maxIndices, &localSolution[0], x);
+                uint32_t randomIndex = baseNum + (nTrials << 6) + (i << 3);
+
+                bigint_t proof = oneHashReference(roundInfo.get(),
+                                              randomIndex,
+                                              x,
+                                              nLessOne);
 
                 if (wide_compare(BIGINT_WORDS, proof.limbs, &parallel_Proofs[i * 8]) < 0)
                 {
-                    wide_copy(roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], &localSolution[0]);
+                    wide_copy(1, &parallel_Indices[(i * roundInfo->maxIndices) + roundInfo->maxIndices - 1], &randomIndex);
                     wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
                 }
             };
 
             tbb::parallel_for<unsigned>(0, PARALLEL_COUNT, tbbIteration);
+
+            nTrials += PARALLEL_COUNT;
 
         }
         while ((tFinish - now() * 1e-9) > 0);
