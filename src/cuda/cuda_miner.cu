@@ -109,53 +109,66 @@ namespace bitecoin
 //     }
 // }
 
-__global__ void cudaInitial(uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, const bigint_t x, const bigint_t nLessOne, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned baseNum)
+// __global__ void cudaInitial(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, const bigint_t x, const bigint_t nLessOne, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned baseNum)
+// {
+//     int globalID = blockIdx.x * blockDim.x + threadIdx.x;
+
+//     uint32_t index = baseNum + globalID;
+
+//     d_ParallelIndices[globalID] = index;
+
+//     bigint_t proof = cudaHash(d_hashConstant,
+//                                       hashSteps,
+//                                       index,
+//                                       x,
+//                                       nLessOne);
+
+//     cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], proof.limbs);
+// }
+
+__global__ void cudaInitial(uint32_t *d_ParallelBestProofs)
 {
-    // int threadID = threadIdx.x;
-    // int blockID = blockIdx.x;
     int globalID = blockIdx.x * blockDim.x + threadIdx.x;
 
-    uint32_t index = baseNum + globalID;
-
-    d_ParallelSolutions[globalID] = index;
-
-    bigint_t proof = oneHashReference(d_hashConstant,
-                                      hashSteps,
-                                      index,
-                                      x,
-                                      nLessOne);
-
-    cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], proof.limbs);
+    bigint_t ones;
+    cuda_wide_ones(8, ones.limbs);
+    cuda_wide_copy(8, &d_ParallelBestProofs[globalID * 8], ones.limbs);
 }
 
-__global__ void cudaIteration(uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, const bigint_t x, const bigint_t nLessOne, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned baseNum, const unsigned cudaDim, const unsigned offset)
+__global__ void cudaIteration(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, const bigint_t x, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned baseNum, const unsigned offset)
 {
-    // int threadID = threadIdx.x;
-    // int blockID = blockIdx.x;
     int globalID = blockIdx.x * blockDim.x + threadIdx.x;
 
-    uint32_t index = baseNum + (offset) + (globalID);
+    uint32_t index = baseNum + offset + globalID;
 
-    // if (blockIdx.x == 0 && threadIdx.x == 0)
-    // {
-    //     // cuPrintf("%d %d %d %d %d %d %d %d\n", nLessOne.limbs[0], nLessOne.limbs[1], nLessOne.limbs[2], nLessOne.limbs[3], nLessOne.limbs[4], nLessOne.limbs[5], nLessOne.limbs[6], nLessOne.limbs[7]);
-    //     cuPrintf("best Score: %g, index: %d\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), index);
-    // }
+    bigint_t proof = cudaHash(d_hashConstant,
+                              hashSteps,
+                              index,
+                              x);
 
-    bigint_t proof = oneHashReference(d_hashConstant,
-                                      hashSteps,
-                                      index,
-                                      x,
-                                      nLessOne);
+    cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], proof.limbs);
+    d_ParallelIndices[globalID] = index;
+}
 
-    if (cuda_wide_compare(8, proof.limbs, &d_ParallelProofs[globalID * 8]) < 0)
+__global__ void cudaWideCrossHash(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, const unsigned cudaTotalSize, const uint32_t maxIndices)
+{
+    int globalID = blockIdx.x * blockDim.x + threadIdx.x;
+
+    for (unsigned compare = globalID + 1; compare < cudaTotalSize; compare++)
     {
-        cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], proof.limbs);
-        cuda_wide_copy(1, &d_ParallelSolutions[globalID], &index);
+        bigint_t crossHash;
+        cuda_wide_xor(8, crossHash.limbs, &d_ParallelProofs[globalID * 8], &d_ParallelProofs[compare * 8]);
+
+        if (cuda_wide_compare(8, crossHash.limbs, &d_ParallelBestProofs[globalID * 8]) < 0)
+        {
+            cuda_wide_copy(8, &d_ParallelBestProofs[globalID * 8], crossHash.limbs);
+            d_ParallelBestSolutions[globalID * maxIndices] = d_ParallelIndices[globalID * maxIndices];
+            d_ParallelBestSolutions[(globalID * maxIndices) + 1] = d_ParallelIndices[compare * maxIndices];
+        }
     }
 }
 
-__global__ void cudaReduce(const unsigned cudaDim, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs)
+__global__ void cudaReduce(const unsigned cudaDim, const uint32_t maxIndices, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions)
 {
 
     int threadID = threadIdx.x;
@@ -164,10 +177,10 @@ __global__ void cudaReduce(const unsigned cudaDim, uint32_t *d_ParallelSolutions
 
     for (int i = 0; i < cudaDim; i++)
     {
-        if (cuda_wide_compare(8, &d_ParallelProofs[(globalID * 8) + (i * cudaDim * 8)], &d_ParallelProofs[globalID * 8]) < 0)
+        if (cuda_wide_compare(8, &d_ParallelBestProofs[(globalID * 8) + (i * cudaDim * 8)], &d_ParallelBestProofs[globalID * 8]) < 0)
         {
-            cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], &d_ParallelProofs[(globalID * 8) + (i * cudaDim * 8)]);
-            cuda_wide_copy(1, &d_ParallelSolutions[globalID * 8], &d_ParallelSolutions[globalID + (i * cudaDim)]);
+            cuda_wide_copy(8, &d_ParallelBestProofs[globalID * 8], &d_ParallelBestProofs[(globalID * 8) + (i * cudaDim * 8)]);
+            cuda_wide_copy(maxIndices, &d_ParallelBestSolutions[globalID * 8], &d_ParallelBestSolutions[globalID + (i * cudaDim)]);
         }
     }
 
@@ -175,56 +188,58 @@ __global__ void cudaReduce(const unsigned cudaDim, uint32_t *d_ParallelSolutions
     {
         if (threadID < toDo)
         {
-            if (cuda_wide_compare(8, &d_ParallelProofs[(threadID * 8) + (toDo * 8)], &d_ParallelProofs[threadID * 8]) < 0)
+            if (cuda_wide_compare(8, &d_ParallelBestProofs[(threadID * 8) + (toDo * 8)], &d_ParallelBestProofs[threadID * 8]) < 0)
             {
-                cuda_wide_copy(8, &d_ParallelProofs[threadID * 8], &d_ParallelProofs[(threadID * 8) + (toDo * 8)]);
-                cuda_wide_copy(1, &d_ParallelSolutions[threadID], &d_ParallelSolutions[threadID + toDo]);
+                cuda_wide_copy(8, &d_ParallelBestProofs[threadID * 8], &d_ParallelBestProofs[(threadID * 8) + (toDo * 8)]);
+                cuda_wide_copy(1, &d_ParallelBestSolutions[threadID], &d_ParallelBestSolutions[threadID + toDo]);
             }
         }
         __syncthreads();
     }
 }
 
-void cudaInit(const unsigned cudaDim, const uint32_t hashSteps, const bigint_t &x, const bigint_t &nLessOne, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, const unsigned baseNum)
+void cudaInit(const unsigned cudaDim, uint32_t *d_ParallelBestProofs)
 {
     dim3 grid(cudaDim);
     dim3 threads(cudaDim);
 
-    cudaInitial <<< grid, threads >>> (d_ParallelSolutions, d_ParallelProofs, x, nLessOne, d_hashConstant, hashSteps, baseNum);
+    cudaInitial <<< grid, threads >>> (d_ParallelBestProofs);
 
     getLastCudaError("Kernel execution failed");
 
     cudaDeviceSynchronize();
 }
 
-void cudaIteration(const unsigned cudaDim, const unsigned baseNum, const unsigned offset, const uint32_t hashSteps, const bigint_t &x, const bigint_t &nLessOne, const uint32_t *d_hashConstant, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs)
+void cudaIteration(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, const bigint_t x, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned baseNum, const unsigned cudaDim, const unsigned offset, const unsigned cudaTotalSize, const uint32_t maxIndices)
 {
     dim3 grid(cudaDim);
     dim3 threads(cudaDim);
 
-    // cudaPrintfInit ();
-
-    cudaIteration <<< grid, threads >>> (d_ParallelSolutions, d_ParallelProofs, x, nLessOne, d_hashConstant, hashSteps, baseNum, cudaDim, offset);
+    cudaIteration <<< grid, threads >>> (d_ParallelIndices, d_ParallelProofs, x, d_hashConstant, hashSteps, baseNum, offset);
 
     getLastCudaError("Kernel execution failed");
 
-    // cudaPrintfDisplay (stdout, true);
+    cudaDeviceSynchronize();
+
+    cudaWideCrossHash <<< grid, threads >>> (d_ParallelIndices, d_ParallelProofs, d_ParallelBestProofs, d_ParallelBestSolutions, cudaTotalSize, maxIndices);
+
+    getLastCudaError("Kernel execution failed");
 
     cudaDeviceSynchronize();
 }
 
-void cudaParallelReduce(const unsigned cudaDim, const uint32_t maxIndices, uint32_t *d_ParallelSolutions, uint32_t *d_ParallelProofs, uint32_t *gpuBestSolution, uint32_t *gpuBestProof)
+void cudaParallelReduce(const unsigned cudaDim, const uint32_t maxIndices, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, uint32_t *gpuBestSolution, uint32_t *gpuBestProof)
 {
     dim3 grid(1);
     dim3 threads(cudaDim);
 
-    cudaReduce <<< grid, threads >>>(cudaDim, d_ParallelSolutions, d_ParallelProofs);
+    cudaReduce <<< grid, threads >>>(cudaDim, maxIndices, d_ParallelBestProofs, d_ParallelBestSolutions);
 
     getLastCudaError("Kernel execution failed");
 
-    checkCudaErrors(cudaMemcpyAsync(gpuBestProof, d_ParallelProofs, sizeof(uint32_t) * 8, cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaMemcpyAsync(gpuBestProof, d_ParallelBestProofs, sizeof(uint32_t) * 8, cudaMemcpyDeviceToHost));
 
-    checkCudaErrors(cudaMemcpyAsync(&gpuBestSolution[maxIndices - 1], d_ParallelSolutions, sizeof(uint32_t), cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaMemcpyAsync(gpuBestSolution, d_ParallelBestSolutions, sizeof(uint32_t) * maxIndices, cudaMemcpyDeviceToHost));
 
     cudaDeviceSynchronize();
 }

@@ -64,12 +64,19 @@ __device__ bigint_t oneHashReference(const uint32_t *d_hashConstant,
     return acc;
 }
 
+__device__ void cuda_wide_ones(unsigned n, uint32_t *res)
+{
+    for (unsigned i = 0; i < n; i++)
+    {
+        res[i] = 0xFFFFFFFFul;
+    }
+}
+
 __device__ bigint_t cudaHash(const uint32_t *d_hashConstant,
                              const uint32_t hashSteps,
                              const uint32_t index,
                              const bigint_t &x)
 {
-    bigint_t acc;
 
     bigint_t fph = x;
     fph.limbs[0] = index;
