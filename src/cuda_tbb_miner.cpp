@@ -123,7 +123,6 @@ public:
         uint32_t curr = 0;
         for (unsigned j = 0; j < roundInfo->maxIndices - 1; j++)
         {
-            // curr += 1; //+ (rand() & 15);
             gpuBestSolution[j] = curr;
             bestSolution[j] = curr;
         }
@@ -157,7 +156,7 @@ public:
                 parallel_Indices[(i * roundInfo->maxIndices) + j] = bestSolution[j];
             }
 
-            uint32_t randomIndex = maxNum - TBB_PARALLEL_COUNT + (i);
+            uint32_t randomIndex = maxNum - i;
 
             bigint_t proof = oneHashReference(roundInfo.get(),
                                               randomIndex,
@@ -175,7 +174,7 @@ public:
         {
             auto tbbIteration = [ = ](unsigned i)
             {
-                uint32_t randomIndex = maxNum - TBB_PARALLEL_COUNT - cpuTrials + i;
+                uint32_t randomIndex = maxNum - cpuTrials - i;
 
                 bigint_t proof = oneHashReference(roundInfo.get(),
                                                   randomIndex,
@@ -209,10 +208,10 @@ public:
         {
             auto tbbReduce = [ = ](unsigned i)
             {
-                if (wide_compare(BIGINT_WORDS, &parallel_Proofs[(i * 8) + (toDo * 8)], &parallel_Proofs[i * 8]) < 0)
+                if (wide_compare(BIGINT_WORDS, &parallel_Proofs[(i + toDo) * 8], &parallel_Proofs[i * 8]) < 0)
                 {
-                    wide_copy(8, &parallel_Proofs[i * 8], &parallel_Proofs[(i * 8) + (toDo * 8)]);
-                    wide_copy(roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], &parallel_Indices[(i * roundInfo->maxIndices) + (toDo * roundInfo->maxIndices)]);
+                    wide_copy(8, &parallel_Proofs[i * 8], &parallel_Proofs[(i + toDo) * 8]);
+                    wide_copy(roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], &parallel_Indices[(i+toDo) * roundInfo->maxIndices]);
                 }
             };
 
@@ -228,7 +227,7 @@ public:
         {
             Log(Log_Verbose, "Accepting GPU Answer.");
             wide_copy(8, bestProof.limbs, gpuBestProof.limbs);
-            wide_copy(1, &bestSolution[roundInfo->maxIndices - 1], &gpuBestSolution[roundInfo->maxIndices - 1]);
+            wide_copy(1, &bestSolution[roundInfo->maxIndices-1], &gpuBestSolution[roundInfo->maxIndices-1]);
         }
 
         solution = bestSolution;

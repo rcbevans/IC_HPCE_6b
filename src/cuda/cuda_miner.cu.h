@@ -64,19 +64,4 @@ __device__ bigint_t oneHashReference(const uint32_t *d_hashConstant,
     return acc;
 }
 
-__device__ bigint_t cudaHash(const uint32_t *d_hashConstant,
-                             const uint32_t hashSteps,
-                             const uint32_t index,
-                             const bigint_t &x)
-{
-    bigint_t acc;
-
-    bigint_t fph = x;
-    fph.limbs[0] = index;
-
-    // Calculate the hash for this specific point
-    return CudaFastPoolHash(d_hashConstant, hashSteps, fph);
-
-}
-
 }//Close namespace
