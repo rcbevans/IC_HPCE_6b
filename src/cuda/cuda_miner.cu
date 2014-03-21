@@ -154,7 +154,7 @@ __global__ void cudaWideCrossHash(uint32_t *d_ParallelIndices, uint32_t *d_Paral
 {
     int globalID = blockIdx.x * blockDim.x + threadIdx.x;
 
-    for (unsigned compare = globalID + 1; compare < cudaTotalSize; compare++)
+    for (unsigned compare = globalID + 1; compare < blockDim.x; compare++)
     {
         bigint_t crossHash;
         cuda_wide_xor(8, crossHash.limbs, &d_ParallelProofs[globalID * 8], &d_ParallelProofs[compare * 8]);
