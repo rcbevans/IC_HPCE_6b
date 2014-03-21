@@ -217,6 +217,7 @@ public:
             {
                 if (wide_compare(BIGINT_WORDS, &parallel_BestProofs[(i + toDo) * 8], &parallel_BestProofs[i * 8]) < 0)
                 {
+                    // Log(Log_Verbose, "From %lg to %lg", wide_as_double(8, &parallel_BestProofs[i * 8]), wide_as_double(8, &parallel_BestProofs[(i + toDo) * 8]));
                     wide_copy(8, &parallel_BestProofs[i * 8], &parallel_BestProofs[(i + toDo) * 8]);
                     wide_copy(roundInfo->maxIndices, &parallel_BestSolutions[i * roundInfo->maxIndices], &parallel_BestSolutions[(i + toDo) * roundInfo->maxIndices]);
                 }
@@ -225,11 +226,13 @@ public:
             tbb::parallel_for<unsigned>(0, toDo, tbbReduce);
         }
 
-        wide_copy(BIGINT_WORDS, bestProof.limbs, &parallel_Proofs[0]);
-        wide_copy(roundInfo->maxIndices, &bestSolution[0], &parallel_Indices[0]);
+        wide_copy(BIGINT_WORDS, bestProof.limbs, &parallel_BestProofs[0]);
+        wide_copy(roundInfo->maxIndices, &bestSolution[0], &parallel_BestSolutions[0]);
 
         reduceThread.join();
 
+        Log(Log_Verbose, "TBB Solution %u %u %u %u", bestSolution[0], bestSolution[1], bestSolution[2], bestSolution[3]);
+        Log(Log_Verbose, "TBB Proof Score %lg", wide_as_double(8, bestProof.limbs));
         Log(Log_Verbose, "GPU Solution %u %u %u %u", gpuBestSolution[0], gpuBestSolution[1], gpuBestSolution[2], gpuBestSolution[3]);
         Log(Log_Verbose, "GPU Proof Score %lg", wide_as_double(8, gpuBestProof.limbs));
 
@@ -288,7 +291,7 @@ int main(int argc, char *argv[])
         std::unique_ptr<bitecoin::Connection> connection {bitecoin::OpenConnection(spec)};
 
         unsigned CUDA_DIM = 128;
-        unsigned TBB_PARALLEL_COUNT = 32;
+        unsigned TBB_PARALLEL_COUNT = 1024;
 
         uint32_t *d_hashConstant, *d_ParallelProofs, *d_ParallelBestProofs, *d_ParallelIndices;
 

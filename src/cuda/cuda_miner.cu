@@ -31,7 +31,7 @@ __global__ void cudaWideCrossHash(uint32_t *d_ParallelIndices, uint32_t *d_Paral
 {
     int globalID = blockIdx.x * blockDim.x + threadIdx.x;
 
-    for (int xorStride = 1; xorStride < cudaDim<<2; xorStride++)
+    for (int xorStride = 1; xorStride < cudaDim<<3; xorStride++)
     {
         if (globalID + (maxIndices * xorStride) < cudaTotalSize)
         {
