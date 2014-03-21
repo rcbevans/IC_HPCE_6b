@@ -88,7 +88,7 @@ public:
         /*
             We will use this to track the best solution we have created so far.
         */
-            roundInfo->maxIndices = 2;
+        roundInfo->maxIndices = 4;
         std::vector<uint32_t> bestSolution(roundInfo->maxIndices);
         std::vector<uint32_t> gpuBestSolution(roundInfo->maxIndices);
         bigint_t bestProof, gpuBestProof;
@@ -123,12 +123,13 @@ public:
         uint32_t curr = 0;
         for (unsigned j = 0; j < roundInfo->maxIndices - 1; j++)
         {
+            curr += 1;
             gpuBestSolution[j] = curr;
             bestSolution[j] = curr;
         }
 
         bigint_t nLessOne = initialHashReference(roundInfo.get(), roundInfo->maxIndices, &bestSolution[0], x);
-        unsigned baseNum = roundInfo->maxIndices;// * 16;
+        unsigned baseNum = roundInfo->maxIndices;
         unsigned maxNum = uint32_t(0xFFFFFFFF);
 
         auto runGPU = [ = , &gpuTrials]

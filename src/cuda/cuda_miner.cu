@@ -27,6 +27,8 @@ __global__ void cudaIteration(uint32_t *d_ParallelSolutions, uint32_t *d_Paralle
 
     uint32_t index = baseNum + offset + globalID;
 
+    // uint32_t index = offset + (threadIdx.x * (blockIdx.x+1)) << blockIdx.y;
+
     bigint_t proof = oneHashReference(d_hashConstant,
                                       hashSteps,
                                       index,
@@ -35,6 +37,10 @@ __global__ void cudaIteration(uint32_t *d_ParallelSolutions, uint32_t *d_Paralle
 
     if (cuda_wide_compare(8, proof.limbs, &d_ParallelProofs[globalID * 8]) < 0)
     {
+        if (threadIdx.x == 0 && blockIdx.x == 0)
+        {
+            cuPrintf("from %lg to %lg\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), cuda_wide_as_double(8, proof.limbs));
+        }
         cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], proof.limbs);
         cuda_wide_copy(1, &d_ParallelSolutions[globalID], &index);
     }
@@ -46,22 +52,32 @@ __global__ void cudaReduce(const unsigned cudaDim, uint32_t *d_ParallelSolutions
     int threadID = threadIdx.x;
     int globalID = blockIdx.x * blockDim.x + threadIdx.x;
 
-    for (int i = 0; i < cudaDim; i++)
+    for (int i = 1; i < cudaDim; i++)
     {
-        if (cuda_wide_compare(8, &d_ParallelProofs[(globalID * 8) + (i * cudaDim * 8)], &d_ParallelProofs[globalID * 8]) < 0)
+        if (cuda_wide_compare(8, &d_ParallelProofs[(globalID + i * cudaDim) * 8], &d_ParallelProofs[globalID * 8]) < 0)
         {
-            cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], &d_ParallelProofs[(globalID * 8) + (i * cudaDim * 8)]);
+            if (threadIdx.x == 0 && blockIdx.x == 0)
+            {
+                cuPrintf("Reduce from %lg to %lg\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), cuda_wide_as_double(8, &d_ParallelProofs[(globalID + i * cudaDim) * 8]));
+            }
+            cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], &d_ParallelProofs[(globalID + i * cudaDim) * 8]);
             cuda_wide_copy(1, &d_ParallelSolutions[globalID * 8], &d_ParallelSolutions[globalID + (i * cudaDim)]);
         }
     }
 
-    for (unsigned toDo = cudaDim; toDo <= 1; toDo >>= 1)
+    __syncthreads();
+
+    for (unsigned toDo = cudaDim >> 1; toDo <= 1; toDo >>= 1)
     {
         if (threadID < toDo)
         {
-            if (cuda_wide_compare(8, &d_ParallelProofs[(threadID * 8) + (toDo * 8)], &d_ParallelProofs[threadID * 8]) < 0)
+            if (cuda_wide_compare(8, &d_ParallelProofs[(threadID + toDo) * 8], &d_ParallelProofs[threadID * 8]) < 0)
             {
-                cuda_wide_copy(8, &d_ParallelProofs[threadID * 8], &d_ParallelProofs[(threadID * 8) + (toDo * 8)]);
+                if (threadIdx.x == 0 && blockIdx.x == 0)
+                {
+                    cuPrintf("Reduce 2 from %lg to %lg\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), cuda_wide_as_double(8, &d_ParallelProofs[(threadID + toDo) * 8]));
+                }
+                cuda_wide_copy(8, &d_ParallelProofs[threadID * 8], &d_ParallelProofs[(threadID + toDo) * 8]);
                 cuda_wide_copy(1, &d_ParallelSolutions[threadID], &d_ParallelSolutions[threadID + toDo]);
             }
         }
@@ -86,7 +102,14 @@ void cudaIteration(const unsigned cudaDim, const unsigned baseNum, const unsigne
     dim3 grid(cudaDim);
     dim3 threads(cudaDim);
 
+    cudaPrintfInit();
+
     cudaIteration <<< grid, threads >>> (d_ParallelSolutions, d_ParallelProofs, x, nLessOne, d_hashConstant, hashSteps, baseNum, cudaDim, offset);
+
+    getLastCudaError("Kernel execution failed");
+
+    cudaPrintfDisplay(stdout, true);
+    cudaPrintfEnd();
 
     getLastCudaError("Kernel execution failed");
 
@@ -98,9 +121,14 @@ void cudaParallelReduce(const unsigned cudaDim, const uint32_t maxIndices, uint3
     dim3 grid(1);
     dim3 threads(cudaDim);
 
+    cudaPrintfInit();
+
     cudaReduce <<< grid, threads >>>(cudaDim, d_ParallelSolutions, d_ParallelProofs);
 
     getLastCudaError("Kernel execution failed");
+
+    cudaPrintfDisplay(stdout, true);
+    cudaPrintfEnd();
 
     checkCudaErrors(cudaMemcpyAsync(gpuBestProof, d_ParallelProofs, sizeof(uint32_t) * 8, cudaMemcpyDeviceToHost));
 
