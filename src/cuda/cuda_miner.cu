@@ -16,7 +16,7 @@ __global__ void cudaGenProof(uint32_t *d_ParallelIndices, uint32_t *d_ParallelPr
 {
     int globalID = blockIdx.x * blockDim.x + threadIdx.x;
 
-    uint32_t index = offset + globalID;
+    uint32_t index = offset + globalID<<2;
 
     bigint_t proof = cudaHash(d_hashConstant,
                               hashSteps,

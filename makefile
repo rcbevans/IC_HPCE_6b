@@ -1,12 +1,15 @@
 SHELL=/bin/bash
 
+CC=g++-4.7
+CXX=g++-4.7
+
 CPPFLAGS += -std=c++11 -W -Wall  -g
 CPPFLAGS += -O3
 CPPFLAGS += -I include -I include/cudaInc/
 CPPINCLUDE += -I include -I include/cudaInc/
 
 LDFLAGS += -L/opt/cuda/lib64/ -L/usr/local/cuda/lib64/
-LDLIBS += -lcuda -lcudart -ltbb
+LDLIBS += -lrt -lcuda -lcudart -ltbb
 
 # For your makefile, add TBB and OpenCL as appropriate
 
@@ -14,7 +17,7 @@ src/cuda/cuda_miner.o :
 	nvcc -c -arch=sm_20 -use_fast_math --optimize 3 $(CPPINCLUDE) src/cuda/cuda_miner.cu -o src/cuda/cuda_miner.o
 
 src/bitecoin_miner : src/cuda/cuda_miner.o
-	g++ -o src/bitecoin_miner $(CPPFLAGS) $(CPPINCLUDE) src/bitecoin_miner.cpp src/cuda/cuda_miner.o $(LDFLAGS) $(LDLIBS)
+	$(CXX) -o src/bitecoin_miner $(CPPFLAGS) $(CPPINCLUDE) src/bitecoin_miner.cpp src/cuda/cuda_miner.o $(LDFLAGS) $(LDLIBS)
 	rm src/cuda/cuda_miner.o
 
 # Launch client and server connected by pipes

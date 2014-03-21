@@ -16,7 +16,6 @@
 
 // CUDA runtime
 #include <cuda_runtime.h>
-#include <curand_kernel.h>
 
 // helper functions and utilities to work with CUDA
 #include <helper_cuda.h>
@@ -79,7 +78,7 @@ public:
         uint32_t *pProof                                                                        // Will contain the "proof", which is just the value
     )
     {
-        double tSafetyMargin = 0.5; // accounts for uncertainty in network conditions
+        double tSafetyMargin = 0.3; // accounts for uncertainty in network conditions
         /* This is when the server has said all bids must be produced by, plus the
             adjustment for clock skew, and the safety margin
         */
@@ -154,7 +153,7 @@ public:
         {
             auto tbbIteration = [ = ](unsigned i)
             {
-                uint32_t index = maxNum - TBB_PARALLEL_COUNT - cpuTrials + i;
+                uint32_t index = maxNum - (TBB_PARALLEL_COUNT<<2) - cpuTrials + (i<<1);
 
                 bigint_t proof = tbbHash(roundInfo.get(),
                                          index,
@@ -229,6 +228,7 @@ public:
 
         if (wide_compare(BIGINT_WORDS, gpuBestProof.limbs, bestProof.limbs) < 0)
         {
+            Log(Log_Verbose, "Accepting GPU Solution");
             wide_copy(8, bestProof.limbs, gpuBestProof.limbs);
             wide_copy(roundInfo->maxIndices, &bestSolution[0], &gpuBestSolution[0]);
         }
@@ -281,7 +281,7 @@ int main(int argc, char *argv[])
         std::unique_ptr<bitecoin::Connection> connection {bitecoin::OpenConnection(spec)};
 
         unsigned CUDA_DIM = 128;
-        unsigned TBB_PARALLEL_COUNT = 1024;
+        unsigned TBB_PARALLEL_COUNT = 8192;
 
         uint32_t *d_hashConstant, *d_ParallelProofs, *d_ParallelBestProofs, *d_ParallelIndices;
 
