@@ -90,7 +90,7 @@ public:
         /*
             We will use this to track the best solution we have created so far.
         */
-        roundInfo->maxIndices = 2;
+        roundInfo->maxIndices = 4;
         std::vector<uint32_t> bestSolution(roundInfo->maxIndices);
         std::vector<uint32_t> gpuBestSolution(roundInfo->maxIndices);
         bigint_t bestProof, gpuBestProof;
@@ -129,7 +129,6 @@ public:
         uint32_t curr = 0;
         for (unsigned j = 0; j < roundInfo->maxIndices - 1; j++)
         {
-            gpuBestSolution[j] = curr;
             bestSolution[j] = curr;
         }
 
