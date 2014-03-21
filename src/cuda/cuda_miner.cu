@@ -37,10 +37,10 @@ __global__ void cudaIteration(uint32_t *d_ParallelSolutions, uint32_t *d_Paralle
 
     if (cuda_wide_compare(8, proof.limbs, &d_ParallelProofs[globalID * 8]) < 0)
     {
-        if (threadIdx.x == 0 && blockIdx.x == 0)
-        {
-            cuPrintf("from %lg to %lg\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), cuda_wide_as_double(8, proof.limbs));
-        }
+        // if (threadIdx.x == 0 && blockIdx.x == 0)
+        // {
+        //     cuPrintf("from %lg to %lg\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), cuda_wide_as_double(8, proof.limbs));
+        // }
         cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], proof.limbs);
         cuda_wide_copy(1, &d_ParallelSolutions[globalID], &index);
     }
@@ -56,10 +56,10 @@ __global__ void cudaReduce(const unsigned cudaDim, uint32_t *d_ParallelSolutions
     {
         if (cuda_wide_compare(8, &d_ParallelProofs[(globalID + i * cudaDim) * 8], &d_ParallelProofs[globalID * 8]) < 0)
         {
-            if (threadIdx.x == 0 && blockIdx.x == 0)
-            {
-                cuPrintf("Reduce from %lg to %lg\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), cuda_wide_as_double(8, &d_ParallelProofs[(globalID + i * cudaDim) * 8]));
-            }
+            // if (threadIdx.x == 0 && blockIdx.x == 0)
+            // {
+            //     cuPrintf("Reduce from %lg to %lg\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), cuda_wide_as_double(8, &d_ParallelProofs[(globalID + i * cudaDim) * 8]));
+            // }
             cuda_wide_copy(8, &d_ParallelProofs[globalID * 8], &d_ParallelProofs[(globalID + i * cudaDim) * 8]);
             cuda_wide_copy(1, &d_ParallelSolutions[globalID * 8], &d_ParallelSolutions[globalID + (i * cudaDim)]);
         }
@@ -73,10 +73,10 @@ __global__ void cudaReduce(const unsigned cudaDim, uint32_t *d_ParallelSolutions
         {
             if (cuda_wide_compare(8, &d_ParallelProofs[(threadID + toDo) * 8], &d_ParallelProofs[threadID * 8]) < 0)
             {
-                if (threadIdx.x == 0 && blockIdx.x == 0)
-                {
-                    cuPrintf("Reduce 2 from %lg to %lg\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), cuda_wide_as_double(8, &d_ParallelProofs[(threadID + toDo) * 8]));
-                }
+                // if (threadIdx.x == 0 && blockIdx.x == 0)
+                // {
+                //     cuPrintf("Reduce 2 from %lg to %lg\n", cuda_wide_as_double(8, &d_ParallelProofs[globalID * 8]), cuda_wide_as_double(8, &d_ParallelProofs[(threadID + toDo) * 8]));
+                // }
                 cuda_wide_copy(8, &d_ParallelProofs[threadID * 8], &d_ParallelProofs[(threadID + toDo) * 8]);
                 cuda_wide_copy(1, &d_ParallelSolutions[threadID], &d_ParallelSolutions[threadID + toDo]);
             }
@@ -102,14 +102,14 @@ void cudaIteration(const unsigned cudaDim, const unsigned baseNum, const unsigne
     dim3 grid(cudaDim);
     dim3 threads(cudaDim);
 
-    cudaPrintfInit();
+    // cudaPrintfInit();
 
     cudaIteration <<< grid, threads >>> (d_ParallelSolutions, d_ParallelProofs, x, nLessOne, d_hashConstant, hashSteps, baseNum, cudaDim, offset);
 
     getLastCudaError("Kernel execution failed");
 
-    cudaPrintfDisplay(stdout, true);
-    cudaPrintfEnd();
+    // cudaPrintfDisplay(stdout, true);
+    // cudaPrintfEnd();
 
     getLastCudaError("Kernel execution failed");
 
@@ -121,14 +121,14 @@ void cudaParallelReduce(const unsigned cudaDim, const uint32_t maxIndices, uint3
     dim3 grid(1);
     dim3 threads(cudaDim);
 
-    cudaPrintfInit();
+    // cudaPrintfInit();
 
     cudaReduce <<< grid, threads >>>(cudaDim, d_ParallelSolutions, d_ParallelProofs);
 
     getLastCudaError("Kernel execution failed");
 
-    cudaPrintfDisplay(stdout, true);
-    cudaPrintfEnd();
+    // cudaPrintfDisplay(stdout, true);
+    // cudaPrintfEnd();
 
     checkCudaErrors(cudaMemcpyAsync(gpuBestProof, d_ParallelProofs, sizeof(uint32_t) * 8, cudaMemcpyDeviceToHost));
 

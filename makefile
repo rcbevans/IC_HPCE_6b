@@ -2,21 +2,24 @@ SHELL=/bin/bash
 
 CPPFLAGS += -std=c++11 -W -Wall  -g
 CPPFLAGS += -O3
-CPPFLAGS += -I include
+CPPFLAGS += -I include -I include/cudaInc/
+CUDAINCLUDE += -I include -I include/cudaInc/
 
-LDLIBS += -ltbb
+LDFLAGS += -L /opt/cuda/lib64/
+
+LDLIBS += -ltbb -lrt -lcudart -lcuda
 
 # For your makefile, add TBB and OpenCL as appropriate
 
 src/cuda/cuda_miner.o :
-	nvcc -c -arch=sm_20 -use_fast_math --optimize 3 -I include/ -I  include/cudaInc/ src/cuda/cuda_miner.cu -o src/cuda/cuda_miner.o
+	nvcc -c -arch=sm_20 -use_fast_math --optimize 3 $(CUDAINCLUDE) src/cuda/cuda_miner.cu -o src/cuda/cuda_miner.o
 
 src/cuda_miner : src/cuda/cuda_miner.o
-	g++ -g -o src/cuda_miner -std=c++11 -O3 -I include/ -I include/cudaInc src/cuda_miner.cpp src/cuda/cuda_miner.o -L /opt/cuda/lib64/ -lcuda -lcudart -ltbb
+	g++ -o src/cuda_miner $(CPPFLAGS) src/cuda_miner.cpp src/cuda/cuda_miner.o $(LDFLAGS) $(LDLIBS)
 	rm src/cuda/cuda_miner.o
 
 src/cuda_tbb_miner : src/cuda/cuda_miner.o
-	g++ -g -o src/cuda_tbb_miner -std=c++11 -O3 -I include/ -I include/cudaInc src/cuda_tbb_miner.cpp src/cuda/cuda_miner.o -L /opt/cuda/lib64/ -lcuda -lcudart -ltbb
+	g++ -o src/cuda_tbb_miner $(CPPFLAGS) src/cuda_tbb_miner.cpp src/cuda/cuda_miner.o $(LDFLAGS) $(LDLIBS)
 	rm src/cuda/cuda_miner.o
 
 # Launch client and server connected by pipes
@@ -55,14 +58,6 @@ miner_connect_local : src/bitecoin_miner
 # Launch a client connected to a shared exchange
 miner_connect_exchange : src/bitecoin_miner
 	src/bitecoin_miner Richy-Rich 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
-
-# Launch a client connected to a local server
-sneaky_miner_connect_local : src/sneaky_miner
-	src/sneaky_miner Richy-Rich 3 tcp-client localhost 4000
-	
-# Launch a client connected to a shared exchange
-sneaky_miner_connect_exchange : src/sneaky_miner
-	src/sneaky_miner Richy-Rich 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
 
 # Launch a client connected to a local server
 cuda_miner_connect_local : src/cuda_miner
