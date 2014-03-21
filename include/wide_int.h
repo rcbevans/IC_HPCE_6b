@@ -2,7 +2,6 @@
 #define wide_int_h
 
 #include <stdint.h>
-#include <assert.h>
 
 #include <stdio.h>
 #include <math.h>
@@ -155,7 +154,6 @@ uint32_t fast_wide_add(unsigned n, uint32_t *res, const uint32_t *a, uint32_t b)
 
 uint32_t wide_add(unsigned n, uint32_t *res, const uint32_t *a, uint64_t b)
 {
-    assert(n >= 2);
     uint64_t acc = a[0] + (b & 0xFFFFFFFFULL);
     res[0] = uint32_t(acc & 0xFFFFFFFFULL);
     uint64_t carry = acc >> 32;
@@ -175,7 +173,6 @@ uint32_t wide_add(unsigned n, uint32_t *res, const uint32_t *a, uint64_t b)
 
 uint32_t fast_wide_add(unsigned n, uint32_t *res, const uint32_t *a, uint64_t b)
 {
-    assert(n >= 2);
     uint64_t acc = a[0] + (b & 0xFFFFFFFFULL);
     res[0] = uint32_t(acc & 0xFFFFFFFFULL);
     uint64_t carry = acc >> 32;
@@ -205,15 +202,11 @@ uint32_t fast_wide_add(unsigned n, uint32_t *res, const uint32_t *a, uint64_t b)
     \note All the integers must be distinct, the output cannot overlap the input */
 void wide_mul(unsigned n, uint32_t *res_hi, uint32_t *res_lo, const uint32_t *a, const uint32_t *b)
 {
-    assert(res_hi != a && res_hi != b);
-    assert(res_lo != a && res_lo != b);
-
     uint64_t carry = 0, acc = 0;
     for (unsigned i = 0; i < n; i++)
     {
         for (unsigned j = 0; j <= i; j++)
         {
-            assert( (j + (i - j)) == i );
             uint64_t tmp = uint64_t(a[j]) * b[i - j];
             acc += tmp;
             if (acc < tmp)

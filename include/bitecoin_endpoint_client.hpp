@@ -152,11 +152,6 @@ public:
 							wide_as_double(BIGINT_WORDS, results->submissions[i].proof), taken,
 							overDue?" OVERDUE":""
 					);
-					printf("%16s solution: ", results->submissions[i].clientId.c_str());
-					for (int j = 0; j < beginRound->maxIndices; j++){
-						printf("%u ", results->submissions[i].solution[j]);
-					}
-					printf("\n");
 					if(m_knownCoins.find(results->submissions[i].clientId)==m_knownCoins.end()){
 						m_knownCoins[results->submissions[i].clientId]=0;
 					}
