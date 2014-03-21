@@ -30,7 +30,7 @@ namespace bitecoin
 //Extern Declarations for Cuda
 extern void cudaInit(const unsigned cudaDim, uint32_t *d_ParallelBestProofs);
 
-extern void cudaIteration(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, const bigint_t x, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned baseNum, const unsigned cudaDim, const unsigned offset, const unsigned cudaTotalSize, const uint32_t maxIndices);
+extern void cudaIteration(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, const bigint_t x, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned cudaDim, const unsigned offset, const unsigned cudaTotalSize, const uint32_t maxIndices);
 
 extern void cudaParallelReduce(const unsigned cudaDim, const uint32_t maxIndices, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, uint32_t *gpuBestSolution, uint32_t *gpuBestProof);
 
@@ -54,7 +54,7 @@ public:
                                 uint32_t *d_ParallelProofs,
                                 uint32_t *d_ParallelBestProofs,
                                 uint32_t *d_ParallelIndices,
-                                unsigned cuda_jobs,
+                                unsigned jobs,
                                 unsigned tbb_jobs) : EndpointClient(clientId,
                                             minerId,
                                             conn,
@@ -64,8 +64,8 @@ public:
         this->d_ParallelProofs = d_ParallelProofs;
         this->d_ParallelBestProofs = d_ParallelBestProofs;
         this->d_ParallelIndices = d_ParallelIndices;
-        this->CUDA_DIM = cuda_jobs;
-        this->CUDA_TRIALS = cuda_jobs * cuda_jobs;
+        this->CUDA_DIM = jobs;
+        this->CUDA_TRIALS = jobs * jobs;
         this->TBB_PARALLEL_COUNT = tbb_jobs;
 
     };
@@ -112,8 +112,10 @@ public:
         std::vector<uint32_t> indices(roundInfo->maxIndices);
 
         //Define TBB shit
-        uint32_t *parallel_Indices = (uint32_t *)malloc(sizeof(uint32_t) * roundInfo->maxIndices * TBB_PARALLEL_COUNT);
+        uint32_t *parallel_Indices = (uint32_t *)malloc(sizeof(uint32_t) * TBB_PARALLEL_COUNT);
+        uint32_t *parallel_BestSolutions = (uint32_t *)malloc(sizeof(uint32_t) * TBB_PARALLEL_COUNT * roundInfo->maxIndices);
         uint32_t *parallel_Proofs = (uint32_t *)malloc(sizeof(uint32_t) * 8 * TBB_PARALLEL_COUNT);
+        uint32_t *parallel_BestProofs = (uint32_t *)malloc(sizeof(uint32_t) * 8 * TBB_PARALLEL_COUNT);
 
         //Define GPU shit
         uint32_t *d_ParallelBestSolutions;
@@ -125,15 +127,6 @@ public:
         unsigned gpuTrials = 0;
         unsigned cpuTrials = 0;
 
-        //Initial Setup
-        uint32_t curr = 0;
-        for (unsigned j = 0; j < roundInfo->maxIndices - 1; j++)
-        {
-            bestSolution[j] = curr;
-        }
-
-        bigint_t nLessOne = initialHashReference(roundInfo.get(), roundInfo->maxIndices, &bestSolution[0], x);
-        unsigned baseNum = roundInfo->maxIndices;
         unsigned maxNum = uint32_t(0xFFFFFFFF);
 
         auto runGPU = [ = , &gpuTrials]
@@ -142,7 +135,7 @@ public:
 
             do
             {
-                cudaIteration(d_ParallelIndices, d_ParallelProofs, d_ParallelBestProofs, d_ParallelBestSolutions, x, d_hashConstant, roundInfo->hashSteps, baseNum, CUDA_DIM, gpuTrials, CUDA_TRIALS, roundInfo->maxIndices);
+                cudaIteration(d_ParallelIndices, d_ParallelProofs, d_ParallelBestProofs, d_ParallelBestSolutions, x, d_hashConstant, roundInfo->hashSteps, CUDA_DIM, gpuTrials, CUDA_TRIALS, roundInfo->maxIndices);
 
                 gpuTrials += CUDA_TRIALS;
             }
@@ -153,44 +146,56 @@ public:
 
         auto tbbInitial = [ = ](unsigned i)
         {
-            for (unsigned j = 0; j < roundInfo->maxIndices - 1; j++)
-            {
-                parallel_Indices[(i * roundInfo->maxIndices) + j] = bestSolution[j];
-            }
-
-            uint32_t randomIndex = maxNum - TBB_PARALLEL_COUNT + (i);
-
-            bigint_t proof = oneHashReference(roundInfo.get(),
-                                              randomIndex,
-                                              x,
-                                              nLessOne);
-
-            wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
+            bigint_t ones;
+            wide_ones(8, ones.limbs);
+            wide_copy(8, &parallel_BestProofs[i * 8], ones.limbs);
         };
 
         tbb::parallel_for<unsigned>(0, TBB_PARALLEL_COUNT, tbbInitial);
-
-        cpuTrials += TBB_PARALLEL_COUNT;
 
         do
         {
             auto tbbIteration = [ = ](unsigned i)
             {
-                uint32_t randomIndex = maxNum - TBB_PARALLEL_COUNT - cpuTrials + i;
+                uint32_t index = maxNum - TBB_PARALLEL_COUNT - cpuTrials + i;
 
-                bigint_t proof = oneHashReference(roundInfo.get(),
-                                                  randomIndex,
-                                                  x,
-                                                  nLessOne);
+                bigint_t proof = tbbHash(roundInfo.get(),
+                                          index,
+                                          x);
 
-                if (wide_compare(BIGINT_WORDS, proof.limbs, &parallel_Proofs[i * 8]) < 0)
-                {
-                    wide_copy(1, &parallel_Indices[(i * roundInfo->maxIndices) + roundInfo->maxIndices - 1], &randomIndex);
-                    wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
-                }
+                wide_copy(8, &parallel_Proofs[i * 8], proof.limbs);
+                parallel_Indices[i] = index;
             };
 
             tbb::parallel_for<unsigned>(0, TBB_PARALLEL_COUNT, tbbIteration);
+
+            auto tbbCrossHash = [ = ](unsigned i)
+            {
+                for (int xorStride = 1; xorStride < TBB_PARALLEL_COUNT>>2; xorStride++)
+                {
+                    if (i + (roundInfo->maxIndices * xorStride) < TBB_PARALLEL_COUNT)
+                    {
+                        bigint_t candidateBestProof;
+                        wide_copy(8, candidateBestProof.limbs, &parallel_Proofs[i * 8]);
+
+                        for (int indexNum = 1; indexNum < roundInfo->maxIndices; indexNum++)
+                        {
+                            wide_xor(8, candidateBestProof.limbs, candidateBestProof.limbs, &parallel_Proofs[(i + (indexNum * xorStride)) * 8]);
+                        }
+
+                        if (wide_compare(8, candidateBestProof.limbs, &parallel_BestProofs[i * 8]) < 0)
+                        {
+                            wide_copy(8, &parallel_BestProofs[i * 8], candidateBestProof.limbs);
+                            for (int ID = 0; ID < roundInfo->maxIndices; ID++)
+                            {
+                                parallel_BestSolutions[(i * roundInfo->maxIndices) + ID] = parallel_Indices[i + (ID * xorStride)];
+                            }
+                        }
+                    }
+                }
+            };
+
+            tbb::parallel_for<unsigned>(0, TBB_PARALLEL_COUNT, tbbCrossHash);
 
             cpuTrials += TBB_PARALLEL_COUNT;
         }
@@ -210,10 +215,10 @@ public:
         {
             auto tbbReduce = [ = ](unsigned i)
             {
-                if (wide_compare(BIGINT_WORDS, &parallel_Proofs[(i * 8) + (toDo * 8)], &parallel_Proofs[i * 8]) < 0)
+                if (wide_compare(BIGINT_WORDS, &parallel_BestProofs[(i + toDo) * 8], &parallel_BestProofs[i * 8]) < 0)
                 {
-                    wide_copy(8, &parallel_Proofs[i * 8], &parallel_Proofs[(i * 8) + (toDo * 8)]);
-                    wide_copy(roundInfo->maxIndices, &parallel_Indices[i * roundInfo->maxIndices], &parallel_Indices[(i * roundInfo->maxIndices) + (toDo * roundInfo->maxIndices)]);
+                    wide_copy(8, &parallel_BestProofs[i * 8], &parallel_BestProofs[(i + toDo) * 8]);
+                    wide_copy(roundInfo->maxIndices, &parallel_BestSolutions[i * roundInfo->maxIndices], &parallel_BestSolutions[(i + toDo) * roundInfo->maxIndices]);
                 }
             };
 
@@ -225,6 +230,9 @@ public:
 
         reduceThread.join();
 
+        Log(Log_Verbose, "GPU Solution %u %u %u %u", gpuBestSolution[0], gpuBestSolution[1], gpuBestSolution[2], gpuBestSolution[3]);
+        Log(Log_Verbose, "GPU Proof Score %lg", wide_as_double(8, gpuBestProof.limbs));
+
         if (wide_compare(BIGINT_WORDS, gpuBestProof.limbs, bestProof.limbs) < 0)
         {
             Log(Log_Verbose, "Accepting GPU Answer.");
@@ -235,8 +243,10 @@ public:
         solution = bestSolution;
         wide_copy(BIGINT_WORDS, pProof, bestProof.limbs);
 
-        free(parallel_Proofs);
         free(parallel_Indices);
+        free(parallel_BestSolutions);
+        free(parallel_Proofs);
+        free(parallel_BestProofs);
 
         checkCudaErrors(cudaFree(d_ParallelBestSolutions));
 

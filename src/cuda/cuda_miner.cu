@@ -12,7 +12,7 @@ __global__ void cudaInitial(uint32_t *d_ParallelBestProofs)
     cuda_wide_copy(8, &d_ParallelBestProofs[globalID * 8], ones.limbs);
 }
 
-__global__ void cudaGenProof(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, const bigint_t x, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned baseNum, const unsigned offset)
+__global__ void cudaGenProof(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, const bigint_t x, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned offset)
 {
     int globalID = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -27,22 +27,31 @@ __global__ void cudaGenProof(uint32_t *d_ParallelIndices, uint32_t *d_ParallelPr
     d_ParallelIndices[globalID] = index;
 }
 
-__global__ void cudaWideCrossHash(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, const unsigned cudaTotalSize, const uint32_t maxIndices)
+__global__ void cudaWideCrossHash(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, const unsigned cudaTotalSize, const uint32_t maxIndices, const unsigned cudaDim)
 {
     int globalID = blockIdx.x * blockDim.x + threadIdx.x;
 
-    bigint_t candidateBestProof;
-    cuda_wide_copy(8, candidateBestProof.limbs, &d_ParallelProofs[globalID * 8]);
-
-    for (int offset = 1; offset < maxIndices; offset++)
+    for (int xorStride = 1; xorStride < cudaDim<<2; xorStride++)
     {
-        cuda_wide_xor(8, candidateBestProof.limbs, candidateBestProof.limbs, &d_ParallelProofs[(globalID * 8) + offset]);
-    }
+        if (globalID + (maxIndices * xorStride) < cudaTotalSize)
+        {
+            bigint_t candidateBestProof;
+            cuda_wide_copy(8, candidateBestProof.limbs, &d_ParallelProofs[globalID * 8]);
 
-    if(cuda_wide_compare(8, candidateBestProof.limbs, &d_ParallelBestProofs[globalID * 8]) < 0)
-    {
-        cuda_wide_copy(8, &d_ParallelBestProofs[globalID * 8], candidateBestProof.limbs);
-        cuda_wide_copy(maxIndices, &d_ParallelBestSolutions[globalID * maxIndices], &d_ParallelIndices[globalID]);
+            for (int indexNum = 1; indexNum < maxIndices; indexNum++)
+            {
+                cuda_wide_xor(8, candidateBestProof.limbs, candidateBestProof.limbs, &d_ParallelProofs[(globalID + (indexNum * xorStride)) * 8]);
+            }
+
+            if (cuda_wide_compare(8, candidateBestProof.limbs, &d_ParallelBestProofs[globalID * 8]) < 0)
+            {
+                cuda_wide_copy(8, &d_ParallelBestProofs[globalID * 8], candidateBestProof.limbs);
+                for (int ID = 0; ID < maxIndices; ID++)
+                {
+                    d_ParallelBestSolutions[(globalID * maxIndices) + ID] = d_ParallelIndices[globalID + (ID * xorStride)];
+                }
+            }
+        }
     }
 }
 
@@ -61,11 +70,11 @@ __global__ void cudaReduce(const unsigned cudaDim, const uint32_t maxIndices, ui
         }
     }
 
-    for (unsigned toDo = cudaDim>>1; toDo <= 1; toDo >>= 1)
+    for (unsigned toDo = cudaDim >> 1; toDo <= 1; toDo >>= 1)
     {
         if (threadID < toDo)
         {
-            if (cuda_wide_compare(8, &d_ParallelBestProofs[(threadID + toDo) * 8)], &d_ParallelBestProofs[threadID * 8]) < 0)
+            if (cuda_wide_compare(8, &d_ParallelBestProofs[(threadID + toDo) * 8], &d_ParallelBestProofs[threadID * 8]) < 0)
             {
                 cuda_wide_copy(8, &d_ParallelBestProofs[threadID * 8], &d_ParallelBestProofs[(threadID  + toDo) * 8]);
                 cuda_wide_copy(maxIndices, &d_ParallelBestSolutions[threadID * maxIndices], &d_ParallelBestSolutions[(threadID + toDo) * maxIndices]);
@@ -87,18 +96,18 @@ void cudaInit(const unsigned cudaDim, uint32_t *d_ParallelBestProofs)
     cudaDeviceSynchronize();
 }
 
-void cudaIteration(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, const bigint_t x, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned baseNum, const unsigned cudaDim, const unsigned offset, const unsigned cudaTotalSize, const uint32_t maxIndices)
+void cudaIteration(uint32_t *d_ParallelIndices, uint32_t *d_ParallelProofs, uint32_t *d_ParallelBestProofs, uint32_t *d_ParallelBestSolutions, const bigint_t x, const uint32_t *d_hashConstant, const uint32_t hashSteps, const unsigned cudaDim, const unsigned offset, const unsigned cudaTotalSize, const uint32_t maxIndices)
 {
     dim3 grid(cudaDim);
     dim3 threads(cudaDim);
 
-    cudaGenProof <<< grid, threads >>> (d_ParallelIndices, d_ParallelProofs, x, d_hashConstant, hashSteps, baseNum, offset);
+    cudaGenProof <<< grid, threads >>> (d_ParallelIndices, d_ParallelProofs, x, d_hashConstant, hashSteps, offset);
 
     getLastCudaError("Kernel execution failed");
 
     cudaDeviceSynchronize();
 
-    cudaWideCrossHash <<< grid, threads >>> (d_ParallelIndices, d_ParallelProofs, d_ParallelBestProofs, d_ParallelBestSolutions, cudaTotalSize, maxIndices);
+    cudaWideCrossHash <<< grid, threads >>> (d_ParallelIndices, d_ParallelProofs, d_ParallelBestProofs, d_ParallelBestSolutions, cudaTotalSize, maxIndices, cudaDim);
 
     getLastCudaError("Kernel execution failed");
 

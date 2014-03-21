@@ -73,29 +73,6 @@ bigint_t FastHashReference(
     bigint_t acc;
     wide_zero(8, acc.limbs);
 
-    //SLOWER THAN ONE CORE DOING IT ALL.... *sigh*
-
-    // uint32_t *dataSet = (uint32_t *)malloc(sizeof(uint32_t) * 8 * nIndices);
-
-    // auto fastPoolHashParFor = [=](unsigned i)
-    // {
-    //  bigint_t fph = x;
-    //     fph.limbs[0] = pIndices[i];
-
-    //     bigint_t point = FastPoolHash(pParams, fph);
-
-    //     wide_copy(8, dataSet + (i*8), point.limbs);
-    // };
-
-    // tbb::parallel_for<unsigned>(0, nIndices, fastPoolHashParFor);
-
-    // for (unsigned i = 0; i < nIndices; i++)
-    // {
-    //  wide_xor(8, acc.limbs, acc.limbs, dataSet + (i * 8));
-    // };
-
-    // free(dataSet);
-
     for (unsigned i = 0; i < nIndices; i++)
     {
         if (i > 0 && pIndices[i - 1] >= pIndices[i])
@@ -165,6 +142,19 @@ bigint_t oneHashReference(const Packet_ServerBeginRound *pParams,
     wide_xor(8, acc.limbs, nLessOne.limbs, point.limbs);
 
     return acc;
+}
+
+bigint_t tbbHash(const Packet_ServerBeginRound *pParams,
+                          const uint32_t index,
+                          const bigint_t &x)
+{
+    bigint_t fph = x;
+    fph.limbs[0] = index;
+
+    // Calculate the hash for this specific point
+    bigint_t point = FastPoolHash(pParams, fph);
+
+    return point;
 }
 
 // Given the various round parameters, this calculates the hash for a particular index value.
