@@ -59,7 +59,11 @@ To aid in our testing we created a local test server which keeps the round lengt
 Work Distribution
 ==========
 
+All work in this project was split with alternations between pair programming when there were bugs to be squashed, and parallel work, one on writing functionality, the other testing to ensure behaviour as required.
 
+We did whiteboard sessions to discuss the problem, different ideas for solutions and how to divide the workload and structure the final code.
+
+We then split up to implement and test, and then worked in parallel, R. Evans writing this readme, and R. Bennett commenting and tidying the source code
 
 Parallel Reduction on Cuda -nVidia
 http://www.google.com/url?q=http%3A%2F%2Fdeveloper.download.nvidia.com%2Fcompute%2Fcuda%2F1.1-Beta%2Fx86_website%2Fprojects%2Freduction%2Fdoc%2Freduction.pdf&sa=D&sntz=1&usg=AFQjCNEBdYr-Njtm2M5wt9qO6RBSqAXBhA

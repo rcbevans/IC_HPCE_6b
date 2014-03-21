@@ -55,4 +55,4 @@ miner_connect_local : src/bitecoin_miner
 	
 # Launch a client connected to a shared exchange
 miner_connect_exchange : src/bitecoin_miner
-	src/bitecoin_miner Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch-Miner 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
+	src/bitecoin_miner "()==[:::::::::::::>" 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
