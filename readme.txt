@@ -9,10 +9,11 @@ The coursework source code is contained within src/
 
 The cuda helper function files are contained within src/cuda/
 
-The code variations are contained within bitecoin_miner.cpp (containing our tbb implementation), cuda_miner.cpp (containing the cuda implementation) and tbb_cuda_miner.cpp (containing the cuda and tbb implementation combined)
+The code variations are contained within bitecoin_miner.cpp (containing a combined cuda and tbb implementation)
 
-Each variation can be run both locally and connected to the exchange by running
-make -B XXX_miner_connect_local OR   make -B XXX_miner_connect_exchange
+Using the makefile provided in the working directory the following commands can be run to connect to a local or exchange server.. 
+
+make -B miner_connect_local  OR   make - B miner_connect_exchange $(EXCHANGE_ADDR) $(EXCHANGE_PORT) 
 
 
 
@@ -49,11 +50,11 @@ In the fourth and final iteration we combined the cuda and TBB miners together t
 Once the cuda-TBB version was implemented we were able to achieve hash throughput of ~140,000,000/3s, however, we noticed that given the amount of trials being completed, we were obtaining only marginally better results than even the original single cpu thread version.  This is because for every proof calculated - the hard work - we were only comparing it to one hash value to seek a collision.  We realised that we could, for every block of proofs generated, run crosscomparisons to maximise, in parallel, the number of collisions possible, yielding much improved results ~e+54, rather that e+69.  To do this, each thread in the global space would choose an index and calculate its hash.  A second cuda kernel then runs which iterates over the other proofs produced in the previous step, xoring and seeking the best collision possible.  The step size is varied to maximize the number of potential proofs which can be checked, improving our chances of hitting a low score for the result.
 
 
+
 Testing:
 ==========
 
 To aid in our testing we created a local test server which keeps the round length, roundSalt, chainData size and hash steps constant in order for us to test the number of trials able to be produced in each round. This enabled us work on code and algorithmic improvements to quantifiably increase the number of trials run per round. The miner was also frequently tested on the exchange server to ensure that we were not submitting our results late and getting an "OVERDUE Error"
-
 
 
 Work Distribution
@@ -64,6 +65,8 @@ All work in this project was split with alternations between pair programming wh
 We did whiteboard sessions to discuss the problem, different ideas for solutions and how to divide the workload and structure the final code.
 
 We then split up to implement and test, and then worked in parallel, R. Evans writing this readme, and R. Bennett commenting and tidying the source code
+
+
 
 Parallel Reduction on Cuda -nVidia
 http://www.google.com/url?q=http%3A%2F%2Fdeveloper.download.nvidia.com%2Fcompute%2Fcuda%2F1.1-Beta%2Fx86_website%2Fprojects%2Freduction%2Fdoc%2Freduction.pdf&sa=D&sntz=1&usg=AFQjCNEBdYr-Njtm2M5wt9qO6RBSqAXBhA
