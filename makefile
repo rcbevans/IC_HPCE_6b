@@ -30,29 +30,29 @@ launch_pipes : src/bitecoin_server src/bitecoin_client
 # Launch an "infinite" server, that will always relaunch
 launch_infinite_server : src/bitecoin_server
 	while [ 1 ]; do \
-		src/bitecoin_server server1-Richy-Rich 3 tcp-server 4000; \
+		src/bitecoin_server server1-Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch-Miner 3 tcp-server 4000; \
 		sleep 15s; \
 	done;
 
 # Launch an "infinite" server, that will always relaunch
 launch_infinite_test_server : src/bitecoin_test_server
 	while [ 1 ]; do \
-		src/bitecoin_test_server server1-Richy-Rich 3 tcp-server 4000; \
+		src/bitecoin_test_server server1-Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch-Miner 3 tcp-server 4000; \
 		sleep 15s; \
 	done;
 
 # Launch a client connected to a local server
 connect_local : src/bitecoin_client
-	src/bitecoin_client Richy-Rich 3 tcp-client localhost 4000
+	src/bitecoin_client Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch-Miner 3 tcp-client localhost 4000
 	
 # Launch a client connected to a shared exchange
 connect_exchange : src/bitecoin_client
-	src/bitecoin_client Richy-Rich 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
+	src/bitecoin_client Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch-Miner 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
 
 # Launch a client connected to a local server
 miner_connect_local : src/bitecoin_miner
-	src/bitecoin_miner Richy-Rich 3 tcp-client localhost 4000
+	src/bitecoin_miner Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch-Miner 3 tcp-client localhost 4000
 	
 # Launch a client connected to a shared exchange
 miner_connect_exchange : src/bitecoin_miner
-	src/bitecoin_miner Richy-Rich 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)
+	src/bitecoin_miner Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch-Miner 3 tcp-client $(EXCHANGE_ADDR) $(EXCHANGE_PORT)

@@ -78,7 +78,7 @@ public:
         uint32_t *pProof                                                                        // Will contain the "proof", which is just the value
     )
     {
-        double tSafetyMargin = 0.3; // accounts for uncertainty in network conditions
+        double tSafetyMargin = 0.5; // accounts for uncertainty in network conditions
         /* This is when the server has said all bids must be produced by, plus the
             adjustment for clock skew, and the safety margin
         */
